@@ -12,6 +12,7 @@ export type LinkStatus =
         kind: "monthly" | "catchup"
         chosenPlan: string | null
         chosenAt: string | null
+        receivedCents: number
         revision: number
         updatedAt: string
       }[]
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
               kind: s.kind,
               chosenPlan: s.chosenPlan,
               chosenAt: s.chosenAt,
+              receivedCents: s.receivedCents,
               revision: s.revision,
               updatedAt: s.updatedAt,
             })),

@@ -33,12 +33,13 @@ pnpm dev:web        # the landing page
 ```
 
 With no `SUPABASE_URL` set, the app runs its share links on **PGlite**: an in-process Postgres that loads the
-real migration from `supabase/migrations/`, persisted in `apps/app/.pglite/`. So local sharing exercises the same
-SQL that production runs. (`RP_PGLITE_DIR=memory://` for a throwaway database.)
+real migrations from `supabase/migrations/`, persisted in `apps/app/.pglite/`. So local sharing exercises the same
+SQL that production runs, and a running dev server re-applies the migrations when they change.
+(`RP_PGLITE_DIR=memory://` for a throwaway database.)
 
 ```sh
 pnpm test        # core logic + the migration on PGlite + the API routes
-pnpm e2e         # Playwright: set up → publish → roommate picks → calendar → backup/restore
+pnpm e2e         # Playwright, on a production build at :3101: publish → pick → calendar → paid → backup
 pnpm lint && pnpm typecheck && pnpm build
 ```
 
@@ -46,23 +47,26 @@ Adding a shadcn component: `pnpm dlx shadcn@latest add <name> -c apps/app` (it l
 
 ## Database setup (Apps Portal, schema `rp`)
 
-The migration creates everything from scratch and is safe to run more than once.
+The migrations create everything from scratch, and each is safe to run more than once. Apply them in order:
 
-1. Apply `supabase/migrations/20260918000000_rp_schema.sql` to the Apps Portal project — paste it into the SQL
-   editor, or `psql "$APPS_PORTAL_DB_URL" -f supabase/migrations/20260918000000_rp_schema.sql`.
-   (Don't `supabase db push` from this repo: Apps Portal's migration history lives in its own repo.)
-2. **Dashboard → Project Settings → API → Exposed schemas → add `rp`.** Without this, every call fails.
-3. Give `apps/app` the project URL and its **publishable** key (see `apps/app/.env.example`).
+1. `supabase/migrations/20260918000000_rp_schema.sql` — the schema, tables and functions.
+2. `supabase/migrations/20260919000000_rp_received.sql` — the received total behind "Paid" / "Overdue".
+
+   Paste each into the SQL editor, or `psql "$APPS_PORTAL_DB_URL" -f <file>`. (Don't `supabase db push` from
+   this repo: Apps Portal's migration history lives in its own repo.)
+3. **Dashboard → Project Settings → API → Exposed schemas → add `rp`.** Without this, every call fails.
+4. Give `apps/app` the project URL and its **publishable** key (see `apps/app/.env.example`).
 
 ### How it's protected
 
 Both tables have RLS on with **no policies and no grants**, so the publishable key can't read or write them
-directly. Everything goes through five `SECURITY DEFINER` functions that each demand a secret:
+directly. Everything goes through `SECURITY DEFINER` functions that each demand a secret:
 
 | function | needs | does |
 | --- | --- | --- |
 | `rp.publish` | link token + write key | creates the link on first use, then adds/updates a month |
 | `rp.unpublish` / `rp.revoke` | link token + write key | removes a month / the whole link |
+| `rp.set_received` | link token + write key | the owner's running total received for a statement |
 | `rp.view` | link token | what the roommate sees |
 | `rp.pick` | link token | records the roommate's choice of plan |
 
@@ -80,7 +84,7 @@ publishing happens, and daily by `pg_cron` if that extension is installed.
 
 Two Vercel projects (or similar) from this repo, with root directories `apps/app` and `apps/web`.
 
-- `apps/app`: `NEXT_PUBLIC_APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
+- `apps/app`: `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
   their own servers, so it must be reachable), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. A production server
   with no Supabase configured answers share requests with `503 sharing_unconfigured`; everything local still works.
 - `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app.
@@ -89,16 +93,41 @@ Two Vercel projects (or similar) from this repo, with root directories `apps/app
 
 One link per roommate, and it lasts: each month is published *into* it (`/r/<token>`, `/r/<token>/<YYYY-MM>`).
 The roommate can subscribe once to `/r/<token>/calendar.ics`, and every month published afterwards shows up with
-the plan they last picked. The feed sets `SEQUENCE` from each statement's revision, so edits update events in
-place. Revoking a link empties the feed rather than erroring. If the database is unreachable the feed answers
-`503`, so calendars keep what they have.
+the plan they last picked.
 
-"Add to calendar" is device-aware and avoids dropping a file in Downloads:
+### Daily statuses
+
+In a subscribed calendar every payment's title leads with where it stands — the feed is worked out fresh each
+time it's fetched, and asks calendars to refresh daily (`REFRESH-INTERVAL`/`X-PUBLISHED-TTL` of `P1D`; Google may
+take up to a day):
+
+| status | when |
+| --- | --- |
+| **Future** | due more than 3 days from today |
+| **Pending** | due in 1–3 days |
+| **Pay now** | due today |
+| **Overdue** | past due and not covered by what's been received |
+| **Paid** | covered by what's been received |
+
+e.g. `Overdue · Pay $238.75 · Unit 3012`, `Paid · $238.75 · Unit 3012`. "Received" is the owner's running total:
+marking a payment received on their device syncs that one number to the statement, and it's applied to the
+payments oldest-first (so early or odd-sized payments line up; a part-paid one shows what's left). Paid events
+drop their reminder. "Today" is the roommate's: the subscribe buttons add `?tz=<their time zone>` (UTC
+otherwise). A statement stays in the feed while anything on it is overdue, else for 35 days past its last date.
+
+`SEQUENCE` is `revision × 5 + status step`, so it rises with every edit and every step towards paid, and calendars
+update events in place. Revoking a link empties the feed rather than erroring. If the database is unreachable
+the feed answers `503`, so calendars keep what they have.
+
+### Add to calendar
+
+Subscribing comes first on every device — it's what gets the daily statuses. A one-off import is offered second
+and carries no status (it's a frozen copy). Nothing drops a file in Downloads unless asked:
 
 | device | primary | also |
 | --- | --- | --- |
-| iPhone / iPad | one-off `.ics` served inline → iOS "Add All" sheet | subscribe (`webcal://`) |
-| Mac | subscribe in Calendar (`webcal://`) | this month only (`.ics`) |
+| iPhone / iPad | subscribe in Calendar (`webcal://`) | just this month: `.ics` served inline → iOS "Add All" sheet |
+| Mac | subscribe in Calendar (`webcal://`) | just this month (`.ics`) |
 | Android | subscribe in Google Calendar | Outlook.com; per-payment Google links (open the Calendar app) |
 | other | Google / Outlook.com subscribe | Microsoft 365, per-payment links, raw `.ics` |
 
@@ -106,8 +135,9 @@ place. Revoking a link empties the feed rather than erroring. If the database is
 
 These can't be covered by automated tests. Try them against a deployed build (subscriptions need a public URL):
 
-- [ ] iPhone Safari: open a share link → **Add to Calendar** shows the "Add All" sheet; events land on the right days with a 9 am alert.
-- [ ] iPhone: **Subscribe instead** → Calendar's subscribe prompt. Publish another month → it appears after a refresh.
+- [ ] iPhone Safari: **Subscribe in Calendar** → Calendar's subscribe prompt; events show "Future · Pay …" etc. with a 9 am alert.
+- [ ] Next day: statuses have moved on (e.g. Pending → Pay now); mark one received on the owner's side → it reads "Paid" after the next refresh.
+- [ ] iPhone: **Add just this month** shows the "Add All" sheet, with plain "Pay …" titles. Publish another month → the subscription gains it.
 - [ ] Opening a link from Messages / WhatsApp: the preview shows "Your share · RoomPay" and no amounts.
 - [ ] Mac Safari/Chrome: **Subscribe in Calendar** opens Calendar.app.
 - [ ] Android Chrome: **Subscribe in Google Calendar** adds the calendar; a per-payment link opens the Calendar app.

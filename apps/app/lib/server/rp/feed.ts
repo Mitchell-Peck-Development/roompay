@@ -5,14 +5,16 @@ import {
   addDays,
   buildCalendar,
   lastDueOn,
+  paymentStatuses,
   pickPlan,
   statementEvents,
 } from "@workspace/core"
 import type { LinkView, StatementView } from "./service"
 
-/** Statements fall out of the feed this long after their last due date. */
+/** Settled statements fall out of the feed this long after their last due date. */
 const FEED_HISTORY_DAYS = 35
-const REFRESH_MINUTES = 60
+/** Statuses move once a day, so calendars are asked to refresh daily. */
+const REFRESH_MINUTES = 24 * 60
 
 export function calendarName(view: LinkView | null): string {
   const label = view?.link.householdLabel.trim()
@@ -25,28 +27,22 @@ export function pageUrl(origin: string, token: string, statement?: StatementView
   return `${origin}/r/${token}/${statement.period}${suffix}`
 }
 
-function eventsFor(
-  view: LinkView,
-  statement: StatementView,
-  planKeys: (string | null | undefined)[],
-  options: { origin: string; token: string }
-): CalendarEvent[] {
-  return statementEvents({
-    linkId: view.link.id,
-    householdLabel: view.link.householdLabel,
-    payload: statement.payload,
-    plan: pickPlan(statement.payload, ...planKeys),
-    revision: statement.revision,
-    updatedAt: new Date(statement.updatedAt),
-    pageUrl: pageUrl(options.origin, options.token, statement),
-  })
+function feedPlan(view: LinkView, statement: StatementView) {
+  return pickPlan(
+    statement.payload,
+    statement.chosenPlan,
+    view.link.preferredPlan,
+    statement.payload.defaultPlan
+  )
 }
 
 /**
- * The subscribable feed: every recent or upcoming statement, each rendered
- * with the roommate's pick for that month, else the plan they last picked,
- * else the owner's default. An unknown link yields an empty calendar rather
- * than an error, so revoking a link quietly clears the subscriber's events.
+ * The subscribable feed: every recent or upcoming statement — plus any older
+ * one that still has something overdue — each rendered with the roommate's
+ * pick for that month, else the plan they last picked, else the owner's
+ * default. Every title leads with that payment's status on `today` in the
+ * roommate's time zone. An unknown link yields an empty calendar rather than
+ * an error, so revoking a link quietly clears the subscriber's events.
  */
 export function buildFeed(
   view: LinkView | null,
@@ -54,20 +50,37 @@ export function buildFeed(
 ): string {
   if (!view) return buildCalendar({ name: calendarName(null), events: [] })
   const cutoff = addDays(options.today, -FEED_HISTORY_DAYS)
-  const events = view.statements
-    .filter((s) => lastDueOn(s.payload) >= cutoff)
-    .flatMap((s) =>
-      eventsFor(view, s, [s.chosenPlan, view.link.preferredPlan, s.payload.defaultPlan], options)
+
+  const events: CalendarEvent[] = []
+  for (const statement of view.statements) {
+    const plan = feedPlan(view, statement)
+    const recent = lastDueOn(statement.payload) >= cutoff
+    const stillOwed = paymentStatuses(plan, statement.receivedCents, options.today).some(
+      (p) => p.status === "overdue"
     )
-    .sort((a, b) => a.date.localeCompare(b.date))
-  return buildCalendar({
-    name: calendarName(view),
-    events,
-    refreshMinutes: REFRESH_MINUTES,
-  })
+    if (!recent && !stillOwed) continue
+    events.push(
+      ...statementEvents({
+        linkId: view.link.id,
+        householdLabel: view.link.householdLabel,
+        payload: statement.payload,
+        plan,
+        revision: statement.revision,
+        updatedAt: new Date(statement.updatedAt),
+        pageUrl: pageUrl(options.origin, options.token, statement),
+        status: { receivedCents: statement.receivedCents, today: options.today },
+      })
+    )
+  }
+  events.sort((a, b) => a.date.localeCompare(b.date))
+
+  return buildCalendar({ name: calendarName(view), events, refreshMinutes: REFRESH_MINUTES })
 }
 
-/** A one-time calendar for a single statement and plan. */
+/**
+ * A one-time calendar for a single statement and plan. Imported events are
+ * frozen copies, so these carry no status — it would only go stale.
+ */
 export function buildOneOff(
   view: LinkView,
   options: {
@@ -84,11 +97,20 @@ export function buildOneOff(
   if (!statement) return null
   return buildCalendar({
     name: calendarName(view),
-    events: eventsFor(
-      view,
-      statement,
-      [options.plan, statement.chosenPlan, view.link.preferredPlan, statement.payload.defaultPlan],
-      options
-    ),
+    events: statementEvents({
+      linkId: view.link.id,
+      householdLabel: view.link.householdLabel,
+      payload: statement.payload,
+      plan: pickPlan(
+        statement.payload,
+        options.plan,
+        statement.chosenPlan,
+        view.link.preferredPlan,
+        statement.payload.defaultPlan
+      ),
+      revision: statement.revision,
+      updatedAt: new Date(statement.updatedAt),
+      pageUrl: pageUrl(options.origin, options.token, statement),
+    }),
   })
 }

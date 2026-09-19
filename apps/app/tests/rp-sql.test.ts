@@ -21,6 +21,7 @@ type ViewResult = {
     payload: { plans: unknown[] }
     chosen_plan: string | null
     chosen_at: string | null
+    received_cents: number
     revision: number
   }[]
 }
@@ -239,6 +240,49 @@ describe("rp.view / rp.pick", () => {
   })
 })
 
+describe("rp.set_received", () => {
+  const received = (cents: number | null, overrides: Record<string, unknown> = {}) =>
+    rp.call<{ received_cents: number; revision: number }>("set_received", {
+      p_token_hash: h(1),
+      p_write_key_hash: h(2),
+      p_period: THIS,
+      p_kind: "monthly",
+      p_received_cents: cents,
+      ...overrides,
+    })
+  const statement = async () => {
+    const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
+    if (!v.ok) throw new Error("expected ok")
+    return v.statements[0]!
+  }
+
+  it("records the owner's running total, bumping the revision only on change", async () => {
+    await pub()
+    expect(await statement()).toMatchObject({ received_cents: 0, revision: 1 })
+    expect(await received(23875)).toEqual({ ok: true, received_cents: 23875, revision: 2 })
+    expect(await received(23875)).toEqual({ ok: true, received_cents: 23875, revision: 2 })
+    expect(await received(0)).toMatchObject({ ok: true, revision: 3 })
+    expect(await statement()).toMatchObject({ received_cents: 0, revision: 3 })
+  })
+
+  it("survives the owner republishing the month", async () => {
+    await pub()
+    await received(5000)
+    await pub()
+    expect(await statement()).toMatchObject({ received_cents: 5000, revision: 3 })
+  })
+
+  it("needs the write key and an existing statement", async () => {
+    await pub()
+    expect(await received(100, { p_write_key_hash: h(3) })).toEqual({ ok: false, error: "forbidden" })
+    expect(await received(100, { p_period: NEXT })).toEqual({ ok: false, error: "not_found" })
+    expect(await received(100, { p_token_hash: h(6) })).toEqual({ ok: false, error: "not_found" })
+    expect(await received(-1)).toEqual({ ok: false, error: "invalid" })
+    expect(await received(null)).toEqual({ ok: false, error: "invalid" })
+    expect(await received(100, { p_token_hash: "nope" })).toEqual({ ok: false, error: "invalid" })
+  })
+})
+
 describe("rp.unpublish / rp.revoke", () => {
   it("need the write key", async () => {
     await pub()
@@ -277,6 +321,11 @@ describe("privileges", () => {
       await expect(rp.db.query("select rp.purge_expired()")).rejects.toThrow(/permission denied/)
       expect(await rp.call("view", { p_token_hash: h(1) })).toMatchObject({ ok: true })
       expect(await pub({ p_token_hash: h(4) })).toMatchObject({ ok: true })
+      expect(
+        await rp.call("set_received", {
+          p_token_hash: h(1), p_write_key_hash: h(2), p_period: THIS, p_kind: "monthly", p_received_cents: 1,
+        })
+      ).toMatchObject({ ok: true })
     } finally {
       await rp.db.exec("reset role")
     }

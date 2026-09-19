@@ -5,6 +5,7 @@ import {
   type Published,
   type SharePayload,
   type StatementRef,
+  paidTotal,
   payloadHash,
   pickPlan,
 } from "@workspace/core"
@@ -78,6 +79,27 @@ export function ShareCard({
   // statement is no longer there (expired, or removed from another device).
   const isPublished = Boolean(link && published && !(status?.ok && !remote) && !linkGone)
   const changed = isPublished && hash !== null && hash !== published?.hash
+
+  // What's been received lives on this device; the server keeps a copy of the
+  // total so the roommate's calendar can say "Paid". Whenever the two differ —
+  // a payment marked or undone, or marked while offline — send the local one.
+  const receivedCents = paidTotal(paid)
+  const remoteReceived = remote?.receivedCents
+  const syncing = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (!link || !isPublished || remoteReceived === undefined) return
+    if (remoteReceived === receivedCents || syncing.current === receivedCents) return
+    syncing.current = receivedCents
+    void shareClient
+      .received({ token: link.token, writeKey: link.writeKey, period, kind: statement.kind, receivedCents })
+      .then((result) => {
+        if (!result.ok && result.error !== "network") toast.error(shareErrorMessage(result.error))
+        return refresh()
+      })
+      .finally(() => {
+        syncing.current = null
+      })
+  }, [link, isPublished, remoteReceived, receivedCents, period, statement.kind, refresh])
 
   const url = link
     ? `${typeof window === "undefined" ? "" : window.location.origin}/r/${link.token}/${period}${
@@ -216,8 +238,10 @@ export function ShareCard({
             <p className="text-xs leading-relaxed text-muted-foreground">
               Publishing stores this statement — its line items, amounts, {who}&apos;s share and the payment
               options — on RoomPay&apos;s server under a random, unguessable link, along with the two labels
-              you chose. No account, no contact details, nothing about how you get paid. It deletes itself 60
-              days after the last due date, and you can delete it sooner from the menu above.
+              you chose. As you mark payments received, the running total is kept there too, so {who}&apos;s
+              calendar can show what&apos;s paid. No account, no contact details, nothing about how you get
+              paid. It deletes itself 60 days after the last due date, and you can delete it sooner from the
+              menu above.
             </p>
             <Button className="h-11 self-start px-4" disabled={busy} onClick={() => publish({ share: true })}>
               <Send /> {busy ? "Publishing…" : "Publish & share"}

@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises"
+import { readFile, readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { PGlite } from "@electric-sql/pglite"
 import type { RpBackend, RpFunction, RpResult } from "./types"
@@ -26,6 +26,13 @@ const SIGNATURES: Record<RpFunction, [name: string, type: string][]> = {
     ["p_write_key_hash", "text"],
   ],
   view: [["p_token_hash", "text"]],
+  set_received: [
+    ["p_token_hash", "text"],
+    ["p_write_key_hash", "text"],
+    ["p_period", "text"],
+    ["p_kind", "text"],
+    ["p_received_cents", "bigint"],
+  ],
   pick: [
     ["p_token_hash", "text"],
     ["p_period", "text"],
@@ -69,15 +76,39 @@ export async function createPgliteBackend(
   const db = new PGlite(options.dataDir ?? "memory://")
   const migrationsDir = options.migrationsDir ?? defaultMigrationsDir()
 
-  async function migrate() {
-    await db.exec(SUPABASE_ROLES)
-    // Dev/test only: keep the build from tracing the whole repo through these reads.
-    const files = (await readdir(/*turbopackIgnore: true*/ migrationsDir))
+  // Dev/test only: the ignore hints keep the build from tracing the whole repo
+  // through these reads.
+  async function migrationFiles() {
+    const names = (await readdir(/*turbopackIgnore: true*/ migrationsDir))
       .filter((f) => f.endsWith(".sql"))
       .sort()
-    for (const file of files) {
-      await db.exec(await readFile(path.join(/*turbopackIgnore: true*/ migrationsDir, file), "utf8"))
-    }
+    return Promise.all(
+      names.map(async (name) => {
+        const file = path.join(/*turbopackIgnore: true*/ migrationsDir, name)
+        const { size, mtimeMs } = await stat(file)
+        return { file, signature: `${name}:${size}:${mtimeMs}` }
+      })
+    )
+  }
+
+  let applied = ""
+  let checkedAt = 0
+
+  async function migrate() {
+    const files = await migrationFiles()
+    await db.exec(SUPABASE_ROLES)
+    for (const { file } of files) await db.exec(await readFile(file, "utf8"))
+    applied = files.map((f) => f.signature).join("|")
+    checkedAt = Date.now()
+  }
+
+  // A long-running dev server keeps this database across edits, so when a
+  // migration is added or changed, apply them again (they're re-runnable).
+  async function ensureCurrent() {
+    if (Date.now() - checkedAt < 2000) return
+    checkedAt = Date.now()
+    const files = await migrationFiles()
+    if (files.map((f) => f.signature).join("|") !== applied) await migrate()
   }
 
   await migrate()
@@ -87,6 +118,7 @@ export async function createPgliteBackend(
     migrate,
     close: () => db.close(),
     async call<T>(fn: RpFunction, args: Record<string, unknown>) {
+      await ensureCurrent()
       const signature = SIGNATURES[fn]
       const placeholders = signature.map(
         ([name, type], i) => `${name} => $${i + 1}::${type}`

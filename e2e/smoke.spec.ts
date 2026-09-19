@@ -27,7 +27,7 @@ async function enterBill(page: Page) {
 
 /** A fresh device: its own storage, and no native share sheet (so links are copied). */
 async function newDevice(browser: Browser, colorScheme: "light" | "dark" = "light") {
-  const context = await browser.newContext({ colorScheme })
+  const context = await browser.newContext({ colorScheme, timezoneId: "America/Chicago" })
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "share", { value: undefined, configurable: true })
   })
@@ -62,18 +62,30 @@ test("owner publishes, roommate picks a plan and gets the dates, owner sees the 
   await roommate.getByRole("radio", { name: /Weekly/ }).click()
   await expect(roommate.getByTestId("pick-feedback")).toContainText("Weekly")
 
+  // Subscribing is the main calendar action, and it carries the roommate's time zone.
+  const subscribe = roommate.getByRole("link", { name: /^Subscribe in/ }).first()
+  await expect(subscribe).toHaveAttribute("href", /Chicago/)
+
   const token = new URL(url).pathname.split("/")[2]!
   const feed = await roommate.request.get(`/r/${token}/calendar.ics`)
   expect(feed.headers()["content-type"]).toBe("text/calendar; charset=utf-8")
   const ics = await feed.text()
   expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(4)
-  expect(ics).toContain("SUMMARY:Pay $238.75 · Unit 3012")
+  expect(ics).toMatch(/SUMMARY:(Future|Pending|Pay now|Overdue) · Pay \$238\.75 · Unit 3012/)
+  expect(ics).toContain("REFRESH-INTERVAL;VALUE=DURATION:P1D")
 
   // --- back on the owner's device
   await page.reload()
   await expect(page.getByTestId("pick-status")).toHaveText("Biscuit picked Weekly.")
   await page.getByRole("button", { name: "Mark paid" }).first().click()
   await expect(page.getByText("$238.75 of $955.00 received")).toBeVisible()
+
+  // The received total reaches the roommate's calendar and their page.
+  await expect
+    .poll(async () => (await roommate.request.get(`/r/${token}/calendar.ics?tz=America/Chicago`)).text())
+    .toContain("SUMMARY:Paid · $238.75 · Unit 3012")
+  await roommate.reload()
+  await expect(roommate.getByTestId("received")).toHaveText("$238.75 received so far · $716.25 to go")
 
   // Changing a number flags the link as stale until it's updated.
   await page.getByLabel("Water", { exact: true }).fill("40")

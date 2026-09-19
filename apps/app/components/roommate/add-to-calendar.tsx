@@ -45,8 +45,10 @@ type Action = {
 
 /**
  * Hands the due dates to whatever calendar this device uses, without a file
- * landing in Downloads: iPhone gets the native "Add All" sheet, Mac and the
- * web calendars get a subscription, Android goes through Google Calendar.
+ * landing in Downloads. Subscribing comes first everywhere: a subscribed
+ * calendar re-reads the feed daily, so each date shows whether it's Future,
+ * Pending, Pay now, Overdue or Paid. A one-off import (iPhone's "Add All"
+ * sheet, or a file on a Mac) is offered second — it's a frozen copy.
  */
 export function AddToCalendar(props: Props) {
   const { origin, token, period, kind, plan, title, householdLabel, currency, pageUrl } = props
@@ -55,45 +57,55 @@ export function AddToCalendar(props: Props) {
     null
   )
 
-  const feed = `${origin}/r/${token}/calendar.ics`
-  const oneOff = `${feed}?${new URLSearchParams({ period, kind, plan: plan.key })}`
+  // The roommate's time zone rides along so "Pay now" flips at their midnight.
+  const timeZone = useBrowserValue<string | null>(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+    null
+  )
+  const base = `${origin}/r/${token}/calendar.ics`
+  const feed = timeZone ? `${base}?${new URLSearchParams({ tz: timeZone })}` : base
+  const oneOff = `${base}?${new URLSearchParams({ period, kind, plan: plan.key })}`
   const calendarName = householdLabel.trim() ? `RoomPay · ${householdLabel.trim()}` : "RoomPay"
   const count = plan.payments.length
   const dates = count === 1 ? "this date" : `these ${count} dates`
 
-  const add: Action = { label: "Add to Calendar", hint: `Adds ${dates} to your calendar.`, href: oneOff, icon: "add" }
+  const subscribeHint = "Every month on this link, with a status that updates daily."
+  const add: Action = {
+    label: "Add just this month",
+    hint: `A one-time copy of ${dates} — no status updates.`,
+    href: oneOff,
+    icon: "add",
+  }
   const subscribeApple: Action = {
     label: "Subscribe in Calendar",
-    hint: "Every month sent to this link shows up by itself.",
+    hint: subscribeHint,
     href: webcalUrl(feed),
     icon: "subscribe",
   }
   const subscribeGoogle: Action = {
     label: "Subscribe in Google Calendar",
-    hint: "Every month sent to this link shows up by itself — Google can take up to a day to refresh.",
+    hint: subscribeHint,
     href: googleSubscribeUrl(feed),
     icon: "subscribe",
     newTab: true,
   }
   const subscribeOutlook: Action = {
     label: "Subscribe in Outlook.com",
-    hint: "Every month sent to this link shows up by itself.",
+    hint: subscribeHint,
     href: outlookSubscribeUrl(feed, calendarName, "live"),
     icon: "subscribe",
     newTab: true,
   }
 
   const [primary, secondary]: [Action, Action] =
-    platform === "ios"
-      ? [add, { ...subscribeApple, label: "Subscribe instead" }]
-      : platform === "mac"
-        ? [subscribeApple, { ...add, label: "Add just this month", hint: `Opens a calendar file with ${dates}.` }]
-        : platform === "android"
-          ? [subscribeGoogle, { ...subscribeOutlook }]
-          : platform === null
-            ? // Before JavaScript runs (or without it): links that work anywhere.
-              [add, { ...subscribeApple, label: "Subscribe" }]
-            : [subscribeGoogle, subscribeOutlook]
+    platform === "ios" || platform === "mac"
+      ? [subscribeApple, add]
+      : platform === "android"
+        ? [subscribeGoogle, subscribeOutlook]
+        : platform === null
+          ? // Before JavaScript runs (or without it): links that work anywhere.
+            [{ ...subscribeApple, label: "Subscribe" }, { ...add, label: "Add to calendar" }]
+          : [subscribeGoogle, subscribeOutlook]
 
   const mobile = platform === "ios" || platform === "android"
   const event = (payment: PlanPayment) => ({
@@ -120,7 +132,7 @@ export function AddToCalendar(props: Props) {
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-3 flex flex-col gap-4 text-sm">
           <div className="flex flex-col gap-1.5">
-            <p className="eyebrow">Subscribe — future months arrive on their own</p>
+            <p className="eyebrow">Subscribe — new months and daily statuses arrive on their own</p>
             <ul className="flex flex-col gap-1.5">
               <li><a className="text-primary underline-offset-4 hover:underline" href={webcalUrl(feed)}>Apple Calendar (iPhone, iPad, Mac)</a></li>
               <li><a className="text-primary underline-offset-4 hover:underline" href={googleSubscribeUrl(feed)} target="_blank" rel="noreferrer">Google Calendar</a></li>
@@ -133,7 +145,7 @@ export function AddToCalendar(props: Props) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <p className="eyebrow">Or add each payment on its own</p>
+            <p className="eyebrow">Or add each payment on its own (no status updates)</p>
             <ul className="flex flex-col divide-y rounded-lg border">
               {plan.payments.map((payment) => (
                 <li key={payment.date} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">

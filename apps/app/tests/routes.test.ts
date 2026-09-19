@@ -12,12 +12,13 @@ import { monthFromNow } from "./helpers"
 
 process.env.RP_BACKEND = "pglite"
 process.env.RP_PGLITE_DIR = "memory://"
-delete process.env.NEXT_PUBLIC_APP_URL
+delete process.env.APP_URL
 
 const routes = {
   publish: () => import("@/app/api/share/publish/route"),
   unpublish: () => import("@/app/api/share/unpublish/route"),
   revoke: () => import("@/app/api/share/revoke/route"),
+  received: () => import("@/app/api/share/received/route"),
   status: () => import("@/app/api/share/status/route"),
   pick: () => import("@/app/api/share/pick/route"),
 }
@@ -127,6 +128,18 @@ describe("share API", () => {
     expect(body.links[token]).toMatchObject({ preferredPlan: "weekly", statements: [{ chosenPlan: "weekly" }] })
   })
 
+  it("takes the owner's received total, with the write key only", async () => {
+    const statement = { token, period: PERIOD, kind: "monthly" }
+    expect((await post("received", { ...statement, writeKey: randomToken(), receivedCents: 23875 })).status).toBe(403)
+    expect((await post("received", { ...statement, writeKey, receivedCents: -5 })).status).toBe(400)
+    expect(await post("received", { ...statement, writeKey, receivedCents: 23875 })).toEqual({
+      status: 200,
+      body: { ok: true, receivedCents: 23875, revision: 4 },
+    })
+    const { body } = await post("status", { tokens: [token] })
+    expect(body.links[token].statements[0]).toMatchObject({ receivedCents: 23875, revision: 4 })
+  })
+
   it("serves the feed and one-off calendars", async () => {
     const feed = await calendar(token)
     expect(feed.status).toBe(200)
@@ -135,10 +148,18 @@ describe("share API", () => {
     expect(feed.headers.get("cache-control")).toBe("no-store")
     const text = await feed.text()
     expect(text.match(/BEGIN:VEVENT/g)).toHaveLength(4)
-    expect(text).toContain("SUMMARY:Pay $238.75 · Unit 3012")
+    // Next month: the first weekly payment is covered, the rest are still to come.
+    expect(text).toContain("SUMMARY:Paid · $238.75 · Unit 3012")
+    expect(text).toMatch(/SUMMARY:(Future|Pending) · Pay \$238\.75 · Unit 3012/)
+    expect(text).toContain("REFRESH-INTERVAL;VALUE=DURATION:P1D")
     expect(text).toContain("X-WR-CALNAME:RoomPay · Unit 3012")
     expect(text).toContain(`http://test.local/r/${token}/${PERIOD}`)
     expect(text).not.toContain(writeKey)
+
+    // "Today" comes from the roommate's time zone when the subscribe link carries one.
+    const zoned = await (await calendar(token, "?tz=Pacific/Kiritimati")).text()
+    expect(zoned).toContain("BEGIN:VCALENDAR")
+    expect((await calendar(token, "?tz=Not/AZone")).status).toBe(200)
 
     const oneOff = await calendar(token, `?period=${PERIOD}&plan=half`)
     expect((await oneOff.text()).match(/BEGIN:VEVENT/g)).toHaveLength(2)

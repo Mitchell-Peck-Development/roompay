@@ -53,6 +53,13 @@ export function StatementView({
                 ? `Due by ${formatShortDate(lastDueOn(payload))}`
                 : `of a ${money(payload.totalCents)} bill for ${formatPeriod(payload.period)}`}
             </p>
+            {statement.receivedCents > 0 && (
+              <p className="mt-2 text-sm font-medium" data-testid="received">
+                {statement.receivedCents >= payload.shareCents
+                  ? "All paid — thank you."
+                  : `${money(statement.receivedCents)} received so far · ${money(payload.shareCents - statement.receivedCents)} to go`}
+              </p>
+            )}
           </div>
 
           {payload.catchup && (
@@ -109,6 +116,7 @@ export function StatementView({
           initialPlan={initialPlan}
           alreadyChosen={statement.chosenPlan !== null}
           shareCents={payload.shareCents}
+          receivedCents={statement.receivedCents}
           currency={payload.currency}
           title={payload.title}
           householdLabel={view.link.householdLabel}

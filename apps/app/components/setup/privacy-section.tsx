@@ -12,7 +12,8 @@ export function PrivacySection() {
         <p>
           <strong className="text-foreground">On our server, only if you publish a link:</strong> a snapshot
           of that statement — line-item names and amounts, that roommate&apos;s share, the payment options and
-          dates — plus the two labels you chose, and which option the roommate picked. It sits under a random
+          dates — plus the two labels you chose, which option the roommate picked, and how much of it you&apos;ve
+          marked as received (so their calendar can show what&apos;s paid). It sits under a random
           link that only works for someone you&apos;ve sent it to.
         </p>
         <p>

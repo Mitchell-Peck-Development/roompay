@@ -14,6 +14,8 @@ export type StatementView = {
   payload: SharePayload
   chosenPlan: string | null
   chosenAt: string | null
+  /** The owner's running total of what's been received for this statement. */
+  receivedCents: number
   revision: number
   publishedAt: string
   updatedAt: string
@@ -45,6 +47,7 @@ type RawView = {
     payload: unknown
     chosen_plan: string | null
     chosen_at: string | null
+    received_cents?: number
     revision: number
     published_at: string
     updated_at: string
@@ -122,6 +125,28 @@ export async function pickPlanFor(input: {
   return { ok: true, chosenPlan: result.chosen_plan, revision: result.revision }
 }
 
+export async function setReceived(input: {
+  token: string
+  writeKey: string
+  period: string
+  kind: StatementKind
+  receivedCents: number
+}): Promise<RpResult<{ receivedCents: number; revision: number }>> {
+  const backend = await getBackend()
+  const result = await backend.call<{ received_cents: number; revision: number }>(
+    "set_received",
+    {
+      p_token_hash: sha256Hex(input.token),
+      p_write_key_hash: sha256Hex(input.writeKey),
+      p_period: input.period,
+      p_kind: input.kind,
+      p_received_cents: input.receivedCents,
+    }
+  )
+  if (!result.ok) return result
+  return { ok: true, receivedCents: Number(result.received_cents), revision: result.revision }
+}
+
 /** Everything a link token unlocks, or null if it's unknown, expired or revoked. */
 export async function viewLink(token: string): Promise<LinkView | null> {
   const backend = await getBackend()
@@ -142,6 +167,8 @@ export async function viewLink(token: string): Promise<LinkView | null> {
       payload: payload.data,
       chosenPlan: s.chosen_plan,
       chosenAt: s.chosen_at,
+      // Absent until the second migration is applied.
+      receivedCents: Number(s.received_cents ?? 0),
       revision: s.revision,
       publishedAt: s.published_at,
       updatedAt: s.updated_at,

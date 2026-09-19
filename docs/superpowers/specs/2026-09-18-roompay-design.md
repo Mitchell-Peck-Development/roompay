@@ -356,3 +356,23 @@ apps/app   NEXT_PUBLIC_APP_URL (absolute origin for links/feeds; falls back to t
            RP_BACKEND=pglite                          (optional; dev/test only)
 apps/web   NEXT_PUBLIC_APP_URL
 ```
+
+## Addendum (2026-09-19): daily statuses in calendars
+
+Owner request: calendar entries show a status that updates daily. Decided with the owner:
+
+- **Statuses (countdown):** Future (> 3 days out), Pending (1–3 days), Pay now (due today), Overdue (past due, not
+  covered), Paid (covered). Title format `Overdue · Pay $238.75 · Unit 3012` / `Paid · $238.75 · Unit 3012`.
+- **Paid knowledge:** the owner's paid tracking stays on their device, but the statement's *running received
+  total* is synced to the server (`rp.statements.received_cents`, set by `rp.set_received` with the write key —
+  migration `20260919000000_rp_received.sql`). The feed pours it into the chosen plan oldest-first (as §3.5 does
+  locally); a part-paid payment shows what's left. This amends §1.3 / §4.2: publishing now also stores that total.
+- **Only subscribed calendars carry statuses.** One-off imports are frozen copies, so they keep plain titles.
+  Subscribe becomes the primary calendar action on every device (amends the §4.6 table: iPhone's primary is now
+  subscribe; "Add All" import is the secondary).
+- **Refresh daily** (`P1D`), replacing hourly. "Today" is the roommate's date via `?tz=` on the subscribe URL
+  (UTC fallback). `SEQUENCE = revision × 5 + status step`; paid events drop the alarm; a statement stays in the
+  feed while anything on it is overdue (amends the 35-day window).
+- The roommate's page shows the same statuses on their chosen plan, and "received so far".
+- `APP_URL` (runtime, server-only) replaces `NEXT_PUBLIC_APP_URL` for `apps/app` — Next inlines `NEXT_PUBLIC_*`
+  at build time, even in server code (§8).

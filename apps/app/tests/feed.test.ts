@@ -24,6 +24,7 @@ function statement(period: string, overrides: Partial<StatementView> = {}): Stat
     payload,
     chosenPlan: null,
     chosenAt: null,
+    receivedCents: 0,
     revision: 1,
     publishedAt: "2026-09-28T12:00:00+00:00",
     updatedAt: "2026-09-28T12:00:00+00:00",
@@ -42,7 +43,7 @@ const view: LinkView = {
   statements: [
     statement("2026-11", { revision: 1 }), // no pick → inherits the link's "weekly"
     statement("2026-10", { chosenPlan: "half", revision: 7 }),
-    statement("2026-07"), // long past → dropped from the feed
+    statement("2026-07", { receivedCents: 95500 }), // long past and settled → dropped
   ],
 }
 
@@ -58,14 +59,46 @@ describe("buildFeed", () => {
     expect(ics).not.toContain("2026-07")
   })
 
-  it("uses each statement's revision as the event sequence", () => {
-    const sequences = [...ics.matchAll(/SEQUENCE:(\d+)/g)].map((m) => m[1])
-    expect(sequences).toEqual(["7", "7", "1", "1", "1", "1"])
+  it("leads each event with its status on the roommate's today", () => {
+    const summaries = [...ics.matchAll(/SUMMARY:(.*)/g)].map((m) => m[1])
+    expect(summaries).toEqual([
+      "Overdue · Pay $477.50 · Unit 3012", // Oct 1
+      "Future · Pay $477.50 · Unit 3012", // Oct 15
+      "Future · Pay $238.75 · Unit 3012", // November, weekly
+      "Future · Pay $238.75 · Unit 3012",
+      "Future · Pay $238.75 · Unit 3012",
+      "Future · Pay $238.75 · Unit 3012",
+    ])
   })
 
-  it("names the calendar, asks for hourly refresh, and never leaks the token in ids", () => {
+  it("derives SEQUENCE from the revision and the status", () => {
+    const sequences = [...ics.matchAll(/SEQUENCE:(\d+)/g)].map((m) => m[1])
+    expect(sequences).toEqual(["38", "35", "5", "5", "5", "5"])
+  })
+
+  it("counts what's been received", () => {
+    const paid = buildFeed(
+      { ...view, statements: [statement("2026-10", { chosenPlan: "half", receivedCents: 47750 })] },
+      options
+    )
+    expect([...paid.matchAll(/SUMMARY:(.*)/g)].map((m) => m[1])).toEqual([
+      "Paid · $477.50 · Unit 3012",
+      "Future · Pay $477.50 · Unit 3012",
+    ])
+  })
+
+  it("keeps an old statement while something on it is still overdue", () => {
+    const owed = buildFeed(
+      { link: { ...view.link, preferredPlan: null }, statements: [statement("2026-07")] },
+      options
+    )
+    expect(owed.match(/BEGIN:VEVENT/g)).toHaveLength(1)
+    expect(owed).toContain("SUMMARY:Overdue · Pay $955.00 · Unit 3012")
+  })
+
+  it("names the calendar, asks for a daily refresh, and never leaks the token in ids", () => {
     expect(ics).toContain("X-WR-CALNAME:RoomPay · Unit 3012")
-    expect(ics).toContain("REFRESH-INTERVAL;VALUE=DURATION:PT1H")
+    expect(ics).toContain("REFRESH-INTERVAL;VALUE=DURATION:P1D")
     for (const uid of ics.matchAll(/UID:(.*)/g)) expect(uid[1]).not.toContain(SECRET_TOKEN)
   })
 
@@ -85,10 +118,11 @@ describe("buildFeed", () => {
 })
 
 describe("buildOneOff", () => {
-  it("renders the requested plan without subscription hints", () => {
+  it("renders the requested plan without subscription hints or statuses", () => {
     const ics = buildOneOff(view, { ...options, period: "2026-10", kind: "monthly", plan: "weekly" })!
     expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(4)
     expect(ics).not.toContain("REFRESH-INTERVAL")
+    expect(ics).toContain("SUMMARY:Pay $238.75 · Unit 3012")
   })
 
   it("defaults to the roommate's pick, and is null for unknown months", () => {

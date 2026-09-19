@@ -1,5 +1,5 @@
 /** The functions exposed by the rp schema (see supabase/migrations). */
-export type RpFunction = "publish" | "unpublish" | "revoke" | "view" | "pick"
+export type RpFunction = "publish" | "unpublish" | "revoke" | "view" | "pick" | "set_received"
 
 export type RpErrorCode = "invalid" | "not_found" | "forbidden" | "busy"
 

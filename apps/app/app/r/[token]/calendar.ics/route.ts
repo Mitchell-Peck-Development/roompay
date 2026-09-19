@@ -1,4 +1,4 @@
-import { TOKEN_RE, isPeriod, statementKindSchema, todayISO } from "@workspace/core"
+import { TOKEN_RE, isPeriod, statementKindSchema, todayInTimeZone } from "@workspace/core"
 import { appOrigin } from "@/lib/server/origin"
 import { buildFeed, buildOneOff } from "@/lib/server/rp/feed"
 import { type LinkView, viewLink } from "@/lib/server/rp/service"
@@ -18,8 +18,10 @@ function calendar(body: string, filename: string, status = 200): Response {
 }
 
 /**
- * No query  → the subscribable feed for this link.
- * ?period=  → a one-off calendar for that statement (&kind=, &plan= optional).
+ * No ?period → the subscribable feed for this link. ?tz= (the roommate's IANA
+ *              time zone, added by the subscribe buttons) sets which day
+ *              "today" is for the statuses; UTC otherwise.
+ * ?period=   → a one-off calendar for that statement (&kind=, &plan= optional).
  */
 export async function GET(
   request: Request,
@@ -43,7 +45,8 @@ export async function GET(
 
   const period = url.searchParams.get("period")
   if (period === null) {
-    return calendar(buildFeed(view, { origin, token, today: todayISO() }), "roompay.ics")
+    const today = todayInTimeZone(url.searchParams.get("tz"))
+    return calendar(buildFeed(view, { origin, token, today }), "roompay.ics")
   }
 
   const kind = statementKindSchema.safeParse(url.searchParams.get("kind") ?? "monthly")

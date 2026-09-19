@@ -43,6 +43,14 @@ export const shareClient = {
 
   revoke: (body: { token: string; writeKey: string }) => post<object>("revoke", body),
 
+  received: (body: {
+    token: string
+    writeKey: string
+    period: string
+    kind: StatementKind
+    receivedCents: number
+  }) => post<{ receivedCents: number; revision: number }>("received", body),
+
   status: (tokens: string[]) => post<{ links: Record<string, LinkStatus> }>("status", { tokens }),
 
   pick: (body: { token: string; period: string; kind: StatementKind; plan: string }) =>

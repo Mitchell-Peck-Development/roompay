@@ -7,12 +7,16 @@ import {
   formatShortDate,
   isGentle,
   largestPayment,
+  paymentStatuses,
+  todayISO,
 } from "@workspace/core"
 import { cn } from "@workspace/ui/lib/utils"
 import { Check } from "lucide-react"
 import * as React from "react"
+import { useBrowserValue } from "@/lib/client"
 import { shareClient, shareErrorMessage } from "@/lib/share-client"
 import { AddToCalendar } from "./add-to-calendar"
+import { StatusChip } from "./status-chip"
 
 type Props = {
   origin: string
@@ -23,6 +27,8 @@ type Props = {
   initialPlan: string
   alreadyChosen: boolean
   shareCents: number
+  /** What the owner has marked as received so far. */
+  receivedCents: number
   currency: string
   title: string
   householdLabel: string
@@ -39,6 +45,13 @@ export function PlanPicker(props: Props) {
   const [error, setError] = React.useState("")
   const plan = plans.find((p) => p.key === selected) ?? plans[0]!
   const single = plans.length === 1
+  // Statuses depend on the roommate's own date, so they appear once in the browser.
+  const today = useBrowserValue<string | null>(() => todayISO(), null)
+  // Only the chosen plan gets statuses — on the others they'd be hypothetical.
+  const statusesFor = (option: Plan) =>
+    today && option.key === plan.key
+      ? paymentStatuses(option, props.receivedCents, today).map((p) => p.status)
+      : null
 
   async function choose(key: string) {
     if (key === selected && state === "saved") return
@@ -104,12 +117,16 @@ export function PlanPicker(props: Props) {
                     <span className="mt-1 block pl-7 text-xs text-muted-foreground">{option.description}</span>
                   )}
                   <span className="mt-2.5 flex flex-wrap gap-2 pl-7">
-                    {option.payments.map((payment) => (
-                      <span key={payment.date} className="rounded-lg border bg-muted/50 px-2.5 py-1.5">
-                        <span className="eyebrow block text-[0.625rem] leading-tight">{formatShortDate(payment.date)}</span>
-                        <span className="tabular text-sm">{formatMoney(payment.amountCents, currency)}</span>
-                      </span>
-                    ))}
+                    {option.payments.map((payment, i) => {
+                      const status = statusesFor(option)?.[i]
+                      return (
+                        <span key={payment.date} className="rounded-lg border bg-muted/50 px-2.5 py-1.5">
+                          <span className="eyebrow block text-[0.625rem] leading-tight">{formatShortDate(payment.date)}</span>
+                          <span className="tabular block text-sm">{formatMoney(payment.amountCents, currency)}</span>
+                          {status && <StatusChip status={status} className="-ml-1.5 mt-0.5" />}
+                        </span>
+                      )
+                    })}
                   </span>
                 </button>
               )
@@ -127,15 +144,19 @@ export function PlanPicker(props: Props) {
         <section className="flex flex-col gap-3">
           <h2 className="font-heading text-lg font-semibold">Payment schedule</h2>
           <ul className="flex flex-col divide-y rounded-xl border bg-card">
-            {plan.payments.map((payment) => (
-              <li key={payment.date} className="flex justify-between gap-3 px-4 py-2.5 text-sm">
-                <span>
-                  <span className="tabular">{formatShortDate(payment.date)}</span>
-                  <span className="ml-2 text-muted-foreground">{payment.label}</span>
-                </span>
-                <span className="tabular font-semibold">{formatMoney(payment.amountCents, currency)}</span>
-              </li>
-            ))}
+            {plan.payments.map((payment, i) => {
+              const status = statusesFor(plan)?.[i]
+              return (
+                <li key={payment.date} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <span className="flex flex-wrap items-center gap-x-2">
+                    <span className="tabular">{formatShortDate(payment.date)}</span>
+                    <span className="text-muted-foreground">{payment.label}</span>
+                    {status && <StatusChip status={status} />}
+                  </span>
+                  <span className="tabular font-semibold">{formatMoney(payment.amountCents, currency)}</span>
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}
@@ -147,7 +168,8 @@ export function PlanPicker(props: Props) {
             {single
               ? "Every payment above"
               : `${plan.name}: ${plan.payments.length === 1 ? "one date" : `${plan.payments.length} dates`}`}
-            , each with a 9 am reminder.
+            , each with a 9 am reminder. Subscribe, and each date also shows whether it&apos;s Future, Pending,
+            Pay now, Overdue or Paid — updated daily.
           </p>
         </div>
         <AddToCalendar

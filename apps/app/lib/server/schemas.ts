@@ -26,6 +26,14 @@ export const unpublishBody = z.object({
 
 export const revokeBody = z.object({ token: tokenSchema, writeKey: tokenSchema })
 
+export const receivedBody = z.object({
+  token: tokenSchema,
+  writeKey: tokenSchema,
+  period: periodSchema,
+  kind: statementKindSchema,
+  receivedCents: z.number().int().min(0).max(1e11),
+})
+
 export const statusBody = z.object({ tokens: z.array(tokenSchema).max(12) })
 
 export const pickBody = z.object({
