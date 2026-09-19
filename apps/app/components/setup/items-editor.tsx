@@ -1,9 +1,9 @@
 "use client"
 
-import { type ItemTemplate, formatMoney } from "@workspace/core"
+import { type ItemTemplate, formatMoney, isOffset, normalizeCoverage, ordinal } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Switch } from "@workspace/ui/components/switch"
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, History, Pencil, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
 import { SectionCard } from "@/components/common/section-card"
 import { describeItemSplit } from "@/components/month/line-split-popover"
@@ -22,6 +22,13 @@ function summary(item: ItemTemplate, currency: string): string {
     return item.meter?.rate ? `Metered · ${item.meter.rate} per ${unit}` : `Metered · per ${unit}`
   }
   return "From the statement"
+}
+
+/** "Covers last month" — the bit that decides who's actually on the hook. */
+function coversLabel(item: ItemTemplate): string {
+  const { offsetMonths, spanMonths } = normalizeCoverage(item.coverage)
+  const back = offsetMonths === 1 ? "last month" : `${offsetMonths} months back`
+  return spanMonths === 1 ? `Covers ${back}` : `Covers ${spanMonths} months, up to ${back}`
 }
 
 export function ItemsEditor() {
@@ -66,8 +73,15 @@ export function ItemsEditor() {
               <p className="truncate text-sm font-medium">{item.label || "Untitled"}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {summary(item, data.household.currency)}
+                {item.dueDay !== undefined && ` · due the ${ordinal(item.dueDay)}`}
                 {item.split.mode !== "default" && ` · ${describeItemSplit(item.split, people)}`}
               </p>
+              {isOffset(item.coverage) && (
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <History className="size-3 shrink-0" aria-hidden />
+                  {coversLabel(item)}
+                </p>
+              )}
             </div>
             <Switch
               aria-label={`Include ${item.label} each month`}

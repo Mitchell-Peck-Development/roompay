@@ -4,6 +4,8 @@ Split rent and bills with roommates. The person who pays the landlord works out 
 offers a few ways to pay it across the month, and sends each roommate a link with their share and the due
 dates. The roommate picks a plan and puts the dates in their calendar.
 
+- **Bills are billed for the period they cover.** The water statement that lands at the end of
+  September is August's usage, so August's residents owe it — not whoever's on September's split.
 - **No accounts.** Roommates are arbitrary labels ("Biscuit", "Room B"), never names.
 - **Per-device.** Everything the owner enters lives in their browser. A backup file moves it between devices.
 - **Server storage is opt-in.** Only publishing a share link sends anything to the server: a snapshot of that
@@ -87,7 +89,54 @@ Two Vercel projects (or similar) from this repo, with root directories `apps/app
 - `apps/app`: `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
   their own servers, so it must be reachable), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. A production server
   with no Supabase configured answers share requests with `503 sharing_unconfigured`; everything local still works.
+
+  **Publishing returns 503 and Supabase *is* configured?** The 503 only happens when one of those
+  two names is unset *in the server process*, so the response body and the deploy log both name
+  which one. The usual causes, in order:
+
+  1. **The names don't match.** Supabase's own Vercel integration supplies `SUPABASE_ANON_KEY` and
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY` — never `SUPABASE_PUBLISHABLE_KEY`, which is what this app
+     reads. Copy the publishable key across under that exact name.
+  2. **Set on the wrong project.** This repo deploys twice; the variables belong to the project
+     rooted at `apps/app`, not `apps/web`.
+  3. **Set on the wrong environment, or not redeployed.** Vercel only picks up new variables on the
+     next deployment, and Preview and Production are scoped separately.
+  4. **Local `next start`.** That runs with `NODE_ENV=production`, so it won't fall back to PGlite
+     the way `pnpm dev:app` does — put both variables in `apps/app/.env.local` (the app directory,
+     not the repo root) or run with `RP_BACKEND=pglite`.
+
+  A 503 from `/r/<token>/calendar.ics` is a different thing: that one means the database was
+  unreachable, and it's deliberate so subscribed calendars keep what they already have.
 - `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app.
+
+## Offset bills, residency and the Bills calendar
+
+Every line item says what stretch of service its bill pays for, and every roommate can say when
+they moved in and out. Shares are then weighted by the days of a bill's service window each
+person was actually here — one mechanism that covers bills in arrears, mid-month move-ins and
+move-outs alike.
+
+- **Coverage** lives on the item (Setup → Line items): *this month*, *last month*, *2 months
+  back*, and how many months one bill spans. Rent and fees default to the month they're billed in;
+  water, sewer and power default to the month before. Each month's line takes a concrete
+  `covers: { start, end }` from that, overridable for a single month from its "Covers…" panel —
+  for the quarterly sewer bill, or the one that turned up a month late.
+- **Residency** lives on the person (Setup → Roommates). Leave it empty and nothing prorates, so
+  existing data behaves exactly as before. Set a move-in date and every bill is weighted by it.
+  The Catch-up tab's move-in date is the same field.
+- **Whatever a roommate doesn't owe falls to the owner**, never to the other roommates — nobody
+  pays more because someone moved in late.
+- **Day-exact.** Weights are whole days over the window's day count, not a rounded fraction, so
+  the parts still add up to the cent.
+
+The **Bills** tab lays the month out as a calendar: each bill on the day it falls due, marked when
+it pays for earlier service. Tapping one sets its amount, its due date and the period it covers.
+Bills with no due date sit in "Not on the calendar" until you give them one — the date only
+decides where a bill shows up, never who owes it.
+
+A move-in catch-up works the same way, statement by statement: a roommate arriving in September
+owes nothing of the water bill that September's statement carries (it's August's), and picks it up
+prorated on October's statement instead.
 
 ## Sharing and calendars
 

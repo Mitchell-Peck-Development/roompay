@@ -16,6 +16,30 @@ export const personSchema = z.object({
   id,
   nickname: label,
   archived: z.boolean().optional(),
+  /** Residency, inclusive at both ends. Undefined means "always here". */
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional(),
+})
+
+export const participantSchema = z.object({
+  personId: id,
+  nickname: label,
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional(),
+})
+
+/** The service a bill pays for, relative to the month it's billed in. */
+export const coverageSchema = z.object({
+  /** 0 = this month, 1 = the month before, and so on. */
+  offsetMonths: z.number().int().min(0).max(24),
+  /** How many months of service one bill covers. */
+  spanMonths: z.number().int().min(1).max(12),
+})
+
+/** A concrete stretch of service, inclusive at both ends. */
+export const serviceWindowSchema = z.object({
+  start: isoDateSchema,
+  end: isoDateSchema,
 })
 
 export const splitSchema = z.discriminatedUnion("mode", [
@@ -48,6 +72,10 @@ export const itemTemplateSchema = z.object({
   defaultAmountCents: cents.optional(),
   meter: meterConfigSchema.optional(),
   split: itemSplitSchema,
+  /** Omitted means the bill covers the month it's billed in. */
+  coverage: coverageSchema.optional(),
+  /** Day of the month the bill usually falls due, for the bills calendar. */
+  dueDay: z.number().int().min(1).max(31).optional(),
 })
 
 export const cadenceSchema = z.object({
@@ -74,6 +102,9 @@ export const monthLineSchema = z.object({
     })
     .optional(),
   split: itemSplitSchema,
+  /** The service this line pays for. Absent on lines from before coverage. */
+  covers: serviceWindowSchema.optional(),
+  dueDate: isoDateSchema.optional(),
 })
 
 export const paidEntrySchema = z.object({
@@ -90,7 +121,7 @@ export const monthRecordSchema = z.object({
   title: z.string().max(120),
   lines: z.array(monthLineSchema).max(100),
   split: splitSchema,
-  participants: z.array(z.object({ personId: id, nickname: label })).max(24),
+  participants: z.array(participantSchema).max(24),
   paid: z.record(z.string(), z.array(paidEntrySchema)),
   published: z.record(z.string(), publishedSchema),
   createdAt: timestamp,
@@ -138,6 +169,9 @@ export const appDataSchema = z.object({
 })
 
 export type Person = z.infer<typeof personSchema>
+export type Participant = z.infer<typeof participantSchema>
+export type Coverage = z.infer<typeof coverageSchema>
+export type ServiceWindow = z.infer<typeof serviceWindowSchema>
 export type Split = z.infer<typeof splitSchema>
 export type ItemSplit = z.infer<typeof itemSplitSchema>
 export type ItemKind = z.infer<typeof itemKindSchema>

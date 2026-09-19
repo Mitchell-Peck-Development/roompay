@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { CatchupResult } from "./catchup"
+import { formatWindow, residentDays, windowDays } from "./coverage"
 import { type ISODate, periodOf } from "./dates"
 import { meterDetail } from "./meter"
 import { type Plan, buildPlans } from "./plans"
@@ -50,6 +51,12 @@ export const sharePayloadSchema = z
           totalCents: cents,
           shareCents: cents,
           detail: z.string().max(200).optional(),
+          /** The service this line pays for, e.g. "August 2026". */
+          covers: z.string().max(60).optional(),
+          /** Days of that service they were here for, when it isn't all of it. */
+          prorated: z
+            .object({ days: z.number().int().min(0).max(800), of: z.number().int().min(1).max(800) })
+            .optional(),
         })
       )
       .max(60),
@@ -74,6 +81,16 @@ export const sharePayloadSchema = z
 
 export type SharePayload = z.infer<typeof sharePayloadSchema>
 
+/** True when a window is exactly the month it's billed in — nothing to say. */
+function sameMonth(covers: { start: ISODate; end: ISODate }, period: string): boolean {
+  return covers.start === `${period}-01` && periodOf(covers.end) === period
+}
+
+function residencyOf(month: MonthRecord, personId: string) {
+  const participant = month.participants.find((p) => p.personId === personId)
+  return { from: participant?.from, to: participant?.to }
+}
+
 export function buildMonthlyPayload(args: {
   month: MonthRecord
   personId: string
@@ -93,11 +110,24 @@ export function buildMonthlyPayload(args: {
         l.line.kind === "metered" && l.line.meter
           ? meterDetail(l.line.meter, currency)
           : undefined
+      const covers = l.line.covers
+      // Billed for service before they arrived? Show the working, so a share
+      // that isn't a clean fraction of the bill doesn't look like a mistake.
+      const fraction = l.occupancy[personId] ?? 1
+      const prorated =
+        covers && fraction < 1
+          ? {
+              days: residentDays(covers, residencyOf(month, personId)),
+              of: windowDays(covers),
+            }
+          : undefined
       return {
         label: l.line.label,
         totalCents: l.amountCents,
         shareCents: l.shares[personId] ?? 0,
         ...(detail ? { detail } : {}),
+        ...(covers && !sameMonth(covers, month.period) ? { covers: formatWindow(covers) } : {}),
+        ...(prorated ? { prorated } : {}),
       }
     })
 
@@ -132,13 +162,26 @@ export function buildCatchupPayload(args: {
     period: periodOf(record.moveIn),
     title: "Move-in catch-up",
     currency,
-    lines: result.lines
-      .filter((l) => l.shareCents !== 0)
-      .map((l) => ({
-        label: l.label,
-        totalCents: l.fullCents,
-        shareCents: l.shareCents,
-      })),
+    // One row per bill per month, so an offset bill that only lands on the
+    // second statement — and lands prorated — reads as its own line.
+    lines: result.statements.flatMap((statement) =>
+      statement.lines
+        .filter((l) => l.shareCents !== 0)
+        .map((l) => ({
+          label: l.label,
+          totalCents: l.fullCents,
+          shareCents: l.shareCents,
+          covers: formatWindow(l.covers),
+          ...(l.occupancy < 1
+            ? {
+                prorated: {
+                  days: residentDays(l.covers, { from: record.moveIn }),
+                  of: windowDays(l.covers),
+                },
+              }
+            : {}),
+        }))
+    ),
     totalCents: result.fullMonthTotalCents,
     shareCents: result.combinedCents,
     plans: [result.plan],

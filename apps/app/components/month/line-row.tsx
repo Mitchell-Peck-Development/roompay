@@ -3,23 +3,30 @@
 import {
   type ComputedLine,
   type LineMeter,
+  type Participant,
+  type Period,
+  formatShortDate,
   meterDetail,
   meterUsage,
   parseDecimal,
+  residentDays,
+  windowDays,
 } from "@workspace/core"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { X } from "lucide-react"
+import { History, X } from "lucide-react"
 import { Amount } from "@/components/common/amount"
 import { MoneyInput } from "@/components/common/money-input"
 import { actions } from "@/lib/actions"
 import { currencySymbol } from "@/lib/format"
 import { useData } from "@/lib/store"
+import { BillPopover, coversLabel, coversOwnMonth } from "./bill-popover"
 import { LineSplitPopover } from "./line-split-popover"
 
-type PersonRef = { personId: string; nickname: string }
+/** Participants carry residency, which is what the proration note explains. */
+type PersonRef = Participant
 
 const KIND_HINT = {
   fixed: "usually fixed",
@@ -27,9 +34,18 @@ const KIND_HINT = {
   metered: "metered",
 } as const
 
-export function LineRow({ computed, people }: { computed: ComputedLine; people: PersonRef[] }) {
+export function LineRow({
+  computed,
+  people,
+  period,
+}: {
+  computed: ComputedLine
+  people: PersonRef[]
+  period: Period
+}) {
   const { line } = computed
   const inputId = `line-${line.id}`
+  const offset = !coversOwnMonth(line, period)
 
   return (
     <div className="flex flex-col gap-2 py-3 first:pt-0">
@@ -44,7 +60,25 @@ export function LineRow({ computed, people }: { computed: ComputedLine; people: 
             ) : (
               <span className="text-xs text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
             )}
+            {line.dueDate && (
+              <span className="tabular text-xs text-muted-foreground">
+                due {formatShortDate(line.dueDate)}
+              </span>
+            )}
           </div>
+          <div className="flex flex-wrap items-center gap-x-2">
+            <BillPopover line={line} period={period} amount={false}>
+              <button
+                type="button"
+                className={`flex items-center gap-1 rounded text-xs underline decoration-dotted underline-offset-4 ${
+                  offset ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {offset && <History className="size-3 shrink-0" aria-hidden />}
+                Covers {coversLabel(line, period)}
+              </button>
+            </BillPopover>
+                </div>
           {people.length > 0 && (
             <LineSplitPopover
               lineId={line.id}
@@ -89,7 +123,42 @@ export function LineRow({ computed, people }: { computed: ComputedLine; people: 
       {line.kind === "metered" && line.meter && (
         <MeterFields lineId={line.id} inputId={inputId} meter={line.meter} />
       )}
+
+      {computed.prorated && <ProrationNote computed={computed} people={people} />}
     </div>
+  )
+}
+
+/**
+ * Why someone's share isn't a clean fraction of the bill: they were only here
+ * for part of what it covers. Spelling it out saves the argument.
+ */
+function ProrationNote({
+  computed,
+  people,
+}: {
+  computed: ComputedLine
+  people: PersonRef[]
+}) {
+  const covers = computed.line.covers
+  if (!covers) return null
+  const total = windowDays(covers)
+  const partial = people.filter((p) => (computed.occupancy[p.personId] ?? 1) < 1)
+  if (partial.length === 0) return null
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      {partial.map((person, i) => {
+        const days = residentDays(covers, person)
+        return (
+          <span key={person.personId}>
+            {i > 0 && ", "}
+            {person.nickname || "Someone"}:{" "}
+            {days === 0 ? "none of it — not here yet" : `${days} of ${total} days`}
+          </span>
+        )
+      })}
+    </span>
   )
 }
 

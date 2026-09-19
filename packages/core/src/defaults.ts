@@ -1,3 +1,4 @@
+import { coverageWindow, dueDateFor } from "./coverage"
 import { type Period, defaultPeriod, formatPeriod } from "./dates"
 import { newId } from "./ids"
 import type {
@@ -6,23 +7,34 @@ import type {
   ItemTemplate,
   MonthLine,
   MonthRecord,
+  Participant,
+  Person,
 } from "./schema"
 
 export function defaultItems(): ItemTemplate[] {
-  const item = (label: string, kind: ItemTemplate["kind"]): ItemTemplate => ({
+  const item = (
+    label: string,
+    kind: ItemTemplate["kind"],
+    extra: Partial<ItemTemplate> = {}
+  ): ItemTemplate => ({
     id: newId(),
     label,
     kind,
     enabled: true,
     split: { mode: "default" },
+    ...extra,
   })
+  // Rent and fees are paid for the month ahead; metered utilities almost
+  // always arrive a month in arrears. Both are editable per item in Setup.
+  const rent = { dueDay: 1, coverage: { offsetMonths: 0, spanMonths: 1 } }
+  const arrears = { coverage: { offsetMonths: 1, spanMonths: 1 } }
   return [
-    item("Rent", "fixed"),
-    item("Service fee", "fixed"),
-    item("Trash disposal", "fixed"),
-    item("Sewer", "variable"),
-    item("Water", "variable"),
-    item("Power", "variable"),
+    item("Rent", "fixed", rent),
+    item("Service fee", "fixed", rent),
+    item("Trash disposal", "fixed", rent),
+    item("Sewer", "variable", arrears),
+    item("Water", "variable", arrears),
+    item("Power", "variable", arrears),
   ]
 }
 
@@ -36,8 +48,10 @@ export function defaultCadences(): Cadence[] {
 
 export function lineFromTemplate(
   template: ItemTemplate,
+  period: Period,
   prevReading?: string
 ): MonthLine {
+  const dueDate = dueDateFor(period, template.dueDay)
   const line: MonthLine = {
     id: newId(),
     templateId: template.id,
@@ -46,6 +60,8 @@ export function lineFromTemplate(
     amountCents:
       template.kind === "fixed" ? (template.defaultAmountCents ?? null) : null,
     split: structuredClone(template.split),
+    covers: coverageWindow(period, template.coverage),
+    ...(dueDate ? { dueDate } : {}),
   }
   if (template.kind === "metered") {
     line.meter = {
@@ -61,6 +77,16 @@ export function lineFromTemplate(
     }
   }
   return line
+}
+
+/** A person as a month snapshots them, residency included. */
+export function toParticipant(person: Person): Participant {
+  return {
+    personId: person.id,
+    nickname: person.nickname,
+    ...(person.from ? { from: person.from } : {}),
+    ...(person.to ? { to: person.to } : {}),
+  }
 }
 
 /** The latest "current" reading recorded for a template, across all months. */
@@ -95,11 +121,9 @@ export function newMonth(
     title: formatPeriod(period),
     lines: data.items
       .filter((t) => t.enabled)
-      .map((t) => lineFromTemplate(t, lastReading(history, t.id, period))),
+      .map((t) => lineFromTemplate(t, period, lastReading(history, t.id, period))),
     split: structuredClone(data.split),
-    participants: data.people
-      .filter((p) => !p.archived)
-      .map((p) => ({ personId: p.id, nickname: p.nickname })),
+    participants: data.people.filter((p) => !p.archived).map(toParticipant),
     paid: {},
     published: {},
     createdAt: stamp,

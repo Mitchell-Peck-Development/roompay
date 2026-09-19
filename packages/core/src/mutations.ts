@@ -1,6 +1,7 @@
 import { defaultCatchupDates } from "./catchup"
+import { coverageWindow, dueDateFor } from "./coverage"
 import type { ISODate, Period } from "./dates"
-import { lineFromTemplate, newMonth } from "./defaults"
+import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
 import { newId, randomToken } from "./ids"
 import { lineAmountCents } from "./meter"
 import type {
@@ -15,6 +16,7 @@ import type {
   MonthRecord,
   PaidEntry,
   Published,
+  ServiceWindow,
   Split,
 } from "./schema"
 
@@ -33,7 +35,7 @@ export type StatementRef =
 function syncParticipants(draft: AppData) {
   draft.current.participants = draft.people
     .filter((p) => !p.archived)
-    .map((p) => ({ personId: p.id, nickname: p.nickname }))
+    .map(toParticipant)
 }
 
 export function addPerson(draft: AppData, nickname: string): string {
@@ -47,6 +49,33 @@ export function renamePerson(draft: AppData, id: string, nickname: string) {
   const person = draft.people.find((p) => p.id === id)
   if (!person) return
   person.nickname = nickname.trim()
+  syncParticipants(draft)
+}
+
+/**
+ * When someone moved in and, if they have, out. Shares of every bill are
+ * weighted by this against the service window the bill covers, so an August
+ * water bill billed in September skips a roommate who arrived in September.
+ */
+export function setPersonResidency(
+  draft: AppData,
+  id: string,
+  patch: { from?: ISODate | null; to?: ISODate | null }
+) {
+  const person = draft.people.find((p) => p.id === id)
+  if (!person) return
+  for (const key of ["from", "to"] as const) {
+    const value = patch[key]
+    if (value === undefined) continue
+    if (value === null) delete person[key]
+    else person[key] = value
+  }
+  if (person.from && person.to && person.to < person.from) person.to = person.from
+  // The catch-up tab works from the same move-in date; keep the two honest.
+  const catchup = draft.catchups[id]
+  if (catchup && person.from && catchup.moveIn !== person.from) {
+    patchCatchup(draft, id, { moveIn: person.from })
+  }
   syncParticipants(draft)
 }
 
@@ -102,15 +131,19 @@ export function upsertItem(draft: AppData, item: ItemTemplate) {
     return
   }
   if (!line) {
-    lines.push(lineFromTemplate(item))
+    lines.push(lineFromTemplate(item, draft.current.period))
     orderCurrentLines(draft)
     return
   }
 
   line.label = item.label
   line.split = structuredClone(item.split)
+  line.covers = coverageWindow(draft.current.period, item.coverage)
+  const dueDate = dueDateFor(draft.current.period, item.dueDay)
+  if (dueDate) line.dueDate = dueDate
+  else delete line.dueDate
   if (line.kind !== item.kind) {
-    const fresh = lineFromTemplate(item)
+    const fresh = lineFromTemplate(item, draft.current.period)
     line.kind = fresh.kind
     line.amountCents = fresh.amountCents
     line.meter = fresh.meter
@@ -221,9 +254,50 @@ export function setLineSplit(
   touchCurrent(draft, now)
 }
 
+/**
+ * Overrides what one month's line covers — for the quarter's worth of sewer,
+ * or the bill that arrived a month late.
+ */
+export function setLineCoverage(
+  draft: AppData,
+  lineId: string,
+  covers: ServiceWindow,
+  now = new Date()
+) {
+  const line = findLine(draft, lineId)
+  if (!line) return
+  line.covers = covers.end < covers.start ? { ...covers, end: covers.start } : covers
+  touchCurrent(draft, now)
+}
+
+export function setLineDueDate(
+  draft: AppData,
+  lineId: string,
+  date: ISODate | null,
+  now = new Date()
+) {
+  const line = findLine(draft, lineId)
+  if (!line) return
+  if (date) line.dueDate = date
+  else delete line.dueDate
+  // A bill that always lands on the same day starts there next month too.
+  const template = draft.items.find((t) => t.id === line.templateId)
+  if (template) {
+    if (date) template.dueDay = Number(date.slice(8, 10))
+    else delete template.dueDay
+  }
+  touchCurrent(draft, now)
+}
+
 export function addOneOffLine(
   draft: AppData,
-  input: { label: string; amountCents: number; split?: ItemSplit },
+  input: {
+    label: string
+    amountCents: number
+    split?: ItemSplit
+    covers?: ServiceWindow
+    dueDate?: ISODate
+  },
   now = new Date()
 ): string {
   const line: MonthLine = {
@@ -233,6 +307,8 @@ export function addOneOffLine(
     oneOff: true,
     amountCents: input.amountCents,
     split: input.split ?? { mode: "default" },
+    covers: input.covers ?? coverageWindow(draft.current.period),
+    ...(input.dueDate ? { dueDate: input.dueDate } : {}),
   }
   draft.current.lines.push(line)
   touchCurrent(draft, now)
@@ -389,15 +465,22 @@ export function ensureCatchup(
   personId: string,
   today: ISODate
 ): CatchupRecord {
-  return (draft.catchups[personId] ??= {
+  const existing = draft.catchups[personId]
+  if (existing) return existing
+  // Residency set in Setup is the move-in date; only fall back to today when
+  // there isn't one, so the two views never disagree the moment this opens.
+  const moveIn = draft.people.find((p) => p.id === personId)?.from ?? today
+  const record: CatchupRecord = {
     personId,
-    moveIn: today,
+    moveIn,
     estimates: {},
     includeNextMonth: true,
     installments: 4,
-    ...defaultCatchupDates(today),
+    ...defaultCatchupDates(moveIn),
     paid: [],
-  })
+  }
+  draft.catchups[personId] = record
+  return record
 }
 
 export function patchCatchup(
@@ -419,6 +502,12 @@ export function patchCatchup(
   }
   if (record.end < record.start) record.end = record.start
   record.updatedAt = now.toISOString()
+  // A move-in date is residency, and residency is what prorates every split.
+  const person = draft.people.find((p) => p.id === personId)
+  if (person && person.from !== record.moveIn) {
+    person.from = record.moveIn
+    syncParticipants(draft)
+  }
 }
 
 // ------------------------------------------------------------ estimates ---

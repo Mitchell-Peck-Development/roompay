@@ -10,6 +10,7 @@ import {
   type PaidEntry,
   type Period,
   type Published,
+  type ServiceWindow,
   type Split,
   type StatementRef,
   mergeData,
@@ -34,6 +35,8 @@ export const actions = {
   renamePerson: (id: string, nickname: string) => run((d) => M.renamePerson(d, id, nickname)),
   setPersonArchived: (id: string, archived: boolean) =>
     run((d) => M.setPersonArchived(d, id, archived)),
+  setPersonResidency: (id: string, patch: { from?: ISODate | null; to?: ISODate | null }) =>
+    run((d) => M.setPersonResidency(d, id, patch)),
   removePerson: (id: string) => run((d) => M.removePerson(d, id)),
 
   upsertItem: (item: ItemTemplate) => run((d) => M.upsertItem(d, item)),
@@ -54,7 +57,11 @@ export const actions = {
     run((d) => M.setLineMeter(d, lineId, patch)),
   setLineSplit: (lineId: string, split: ItemSplit) =>
     run((d) => M.setLineSplit(d, lineId, split)),
-  addOneOffLine: (input: { label: string; amountCents: number; split?: ItemSplit }) =>
+  setLineCoverage: (lineId: string, covers: ServiceWindow) =>
+    run((d) => M.setLineCoverage(d, lineId, covers)),
+  setLineDueDate: (lineId: string, date: ISODate | null) =>
+    run((d) => M.setLineDueDate(d, lineId, date)),
+  addOneOffLine: (input: Parameters<typeof M.addOneOffLine>[1]) =>
     run((d) => M.addOneOffLine(d, input)),
   removeLine: (lineId: string) => run((d) => M.removeLine(d, lineId)),
 

@@ -88,3 +88,71 @@ describe("computeMonth", () => {
     expect(splitPctTotal({ mode: "even" })).toBe(0)
   })
 })
+
+describe("computeMonth · service windows", () => {
+  const august = { start: "2026-08-01", end: "2026-08-31" }
+  const september = { start: "2026-09-01", end: "2026-09-30" }
+  const line = (id: string, amountCents: number, covers: { start: string; end: string }) => ({
+    id,
+    label: id,
+    kind: "variable" as const,
+    amountCents,
+    split: { mode: "default" as const },
+    covers,
+  })
+
+  it("leaves a roommate off a bill for service before they arrived", () => {
+    // Water billed in September, covering August. Biscuit moved in Sept 1.
+    const month = computeMonth({
+      lines: [line("water", 8400, august)],
+      split: { mode: "even" },
+      participants: [{ personId: "biscuit", nickname: "Biscuit", from: "2026-09-01" }],
+    })
+    expect(month.lines[0]!.shares).toEqual({ owner: 8400, biscuit: 0 })
+    expect(month.lines[0]!.prorated).toBe(true)
+    expect(month.lines[0]!.occupancy.biscuit).toBe(0)
+  })
+
+  it("prorates by days inside the window, to the cent", () => {
+    const month = computeMonth({
+      lines: [line("rent", 180000, september)],
+      split: { mode: "even" },
+      participants: [{ personId: "biscuit", nickname: "Biscuit", from: "2026-09-16" }],
+    })
+    // 15 of 30 days of a half share.
+    expect(month.lines[0]!.shares).toEqual({ owner: 135000, biscuit: 45000 })
+    expect(month.totals.owner! + month.totals.biscuit!).toBe(180000)
+  })
+
+  it("hands what a latecomer doesn't owe to the owner, not the other roommates", () => {
+    const month = computeMonth({
+      lines: [line("rent", 90000, september)],
+      split: { mode: "even" },
+      participants: [
+        { personId: "a", nickname: "A" },
+        { personId: "b", nickname: "B", from: "2026-09-16" },
+      ],
+    })
+    // A keeps a full third; B pays half of one; the owner picks up the rest.
+    expect(month.lines[0]!.shares).toEqual({ owner: 45000, a: 30000, b: 15000 })
+  })
+
+  it("prorates a percent split the same way", () => {
+    const month = computeMonth({
+      lines: [line("rent", 100000, september)],
+      split: { mode: "percent", pct: { a: 40 } },
+      participants: [{ personId: "a", nickname: "A", to: "2026-09-15" }],
+    })
+    expect(month.lines[0]!.shares).toEqual({ owner: 80000, a: 20000 })
+  })
+
+  it("splits a line with no window whole, as months made before this did", () => {
+    const month = computeMonth({
+      lines: [{ id: "rent", label: "rent", kind: "variable", amountCents: 1000, split: { mode: "default" } }],
+      split: { mode: "even" },
+      participants: [{ personId: "a", nickname: "A", from: "2026-09-16" }],
+    })
+    expect(month.lines[0]!.shares).toEqual({ owner: 500, a: 500 })
+    expect(month.lines[0]!.prorated).toBe(false)
+  })
+})
