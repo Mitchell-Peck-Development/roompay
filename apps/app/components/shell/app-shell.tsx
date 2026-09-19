@@ -26,11 +26,13 @@ const isTab = (value: string | null): value is TabId =>
 
 /** The tab lives in client state and is mirrored to ?tab= so reloads keep it. */
 function useTab(): [TabId, (tab: TabId) => void] {
-  const [tab, setTab] = React.useState<TabId>("month")
-  React.useEffect(() => {
+  // Safe to read the URL up front: nothing tab-specific renders until the
+  // store has hydrated, which only happens after mount.
+  const [tab, setTab] = React.useState<TabId>(() => {
+    if (typeof window === "undefined") return "month"
     const fromUrl = new URLSearchParams(window.location.search).get("tab")
-    if (isTab(fromUrl)) setTab(fromUrl)
-  }, [])
+    return isTab(fromUrl) ? fromUrl : "month"
+  })
   const change = React.useCallback((next: TabId) => {
     setTab(next)
     const url = new URL(window.location.href)

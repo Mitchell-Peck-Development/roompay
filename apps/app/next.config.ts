@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui", "@workspace/core"],
   // The development database ships a WASM Postgres; keep it out of the bundle.
   serverExternalPackages: ["@electric-sql/pglite"],
+  // Keep the dev badge clear of the phone tab bar.
+  devIndicators: { position: "top-right" },
   async headers() {
     return [
       {

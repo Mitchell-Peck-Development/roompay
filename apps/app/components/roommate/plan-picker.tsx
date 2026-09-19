@@ -144,8 +144,10 @@ export function PlanPicker(props: Props) {
         <div>
           <h2 className="font-heading text-lg font-semibold">Put the dates in your calendar</h2>
           <p className="text-sm text-muted-foreground">
-            {single ? "Every payment above" : `${plan.name}: ${plan.payments.length} ${plan.payments.length === 1 ? "date" : "dates"}`}
-            , with a reminder on the morning of each.
+            {single
+              ? "Every payment above"
+              : `${plan.name}: ${plan.payments.length === 1 ? "one date" : `${plan.payments.length} dates`}`}
+            , each with a 9 am reminder.
           </p>
         </div>
         <AddToCalendar

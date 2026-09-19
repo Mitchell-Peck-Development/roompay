@@ -1,6 +1,6 @@
 "use client"
 
-import { buildMonthlyPayload, buildPlans, computeMonth, isDirty } from "@workspace/core"
+import { buildMonthlyPayload, buildPlans, computeMonth } from "@workspace/core"
 import * as React from "react"
 import { RoommateSwitcher } from "@/components/common/roommate-switcher"
 import { SectionCard } from "@/components/common/section-card"
@@ -104,7 +104,6 @@ export function MonthTab() {
             payload={payload}
             published={month.published[person.personId]}
             paid={month.paid[person.personId] ?? []}
-            needsSave={isDirty(data)}
             beforePublish={actions.saveCurrent}
           />
         </>

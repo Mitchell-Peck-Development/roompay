@@ -420,3 +420,34 @@ export function patchCatchup(
   if (record.end < record.start) record.end = record.start
   record.updatedAt = now.toISOString()
 }
+
+// ------------------------------------------------------------ estimates ---
+
+/**
+ * The most recent amount entered for each line item, across the working month
+ * and saved months — a sensible starting estimate for a move-in catch-up.
+ */
+export function recentAmounts(data: Pick<AppData, "current" | "months">): Record<string, number> {
+  const months = [data.current, ...data.months].sort(
+    (a, b) => b.period.localeCompare(a.period) || b.updatedAt.localeCompare(a.updatedAt)
+  )
+  const found: Record<string, number> = {}
+  for (const month of months) {
+    for (const line of month.lines) {
+      if (!line.templateId || line.templateId in found) continue
+      const amount = lineAmountCents(line)
+      if (amount !== null) found[line.templateId] = amount
+    }
+  }
+  return found
+}
+
+/** Item templates with each missing default filled in from recent months. */
+export function itemsWithRecentDefaults(data: Pick<AppData, "items" | "current" | "months">): ItemTemplate[] {
+  const recent = recentAmounts(data)
+  return data.items.map((item) =>
+    item.defaultAmountCents === undefined && recent[item.id] !== undefined
+      ? { ...item, defaultAmountCents: recent[item.id] }
+      : item
+  )
+}

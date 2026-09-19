@@ -223,3 +223,19 @@ describe("catch-up", () => {
     expect(appDataSchema.safeParse(data).success).toBe(true)
   })
 })
+
+describe("recent amounts", () => {
+  it("finds the latest entered amount per item, newest month first", () => {
+    M.setLineAmount(data, line("Water").id, 3800, now)
+    M.saveCurrent(data, now)
+    M.startNewMonth(data, "2026-10", now)
+    M.setLineAmount(data, line("Water").id, 4100, now)
+    M.setLineAmount(data, line("Rent").id, 164800, now)
+    expect(M.recentAmounts(data)).toMatchObject({ [item("Water").id]: 4100, [item("Rent").id]: 164800 })
+    expect(M.recentAmounts(data)).not.toHaveProperty(item("Power").id)
+
+    const filled = M.itemsWithRecentDefaults(data)
+    expect(filled.find((t) => t.label === "Water")!.defaultAmountCents).toBe(4100)
+    expect(filled.find((t) => t.label === "Power")!.defaultAmountCents).toBeUndefined()
+  })
+})

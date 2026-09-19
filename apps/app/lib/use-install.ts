@@ -2,6 +2,7 @@
 
 import { type Platform, detectPlatform } from "@workspace/core"
 import * as React from "react"
+import { useBrowserValue, useIsClient } from "./client"
 import { isStandalone } from "./durability"
 
 type InstallPromptEvent = Event & {
@@ -40,19 +41,17 @@ export function useInstall(): {
   prompt(): Promise<boolean>
 } {
   const canPrompt = React.useSyncExternalStore(subscribe, () => deferred !== null, () => false)
-  const [env, setEnv] = React.useState<{ platform: Platform; standalone: boolean } | null>(null)
-
-  React.useEffect(() => {
-    setEnv({
-      platform: detectPlatform(navigator.userAgent, navigator.maxTouchPoints),
-      standalone: isStandalone(),
-    })
-  }, [])
+  const ready = useIsClient()
+  const platform = useBrowserValue<Platform>(
+    () => detectPlatform(navigator.userAgent, navigator.maxTouchPoints),
+    "other"
+  )
+  const standalone = useBrowserValue(isStandalone, false)
 
   return {
-    ready: env !== null,
-    platform: env?.platform ?? "other",
-    standalone: env?.standalone ?? false,
+    ready,
+    platform,
+    standalone,
     canPrompt,
     async prompt() {
       if (!deferred) return false

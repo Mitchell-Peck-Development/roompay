@@ -3,13 +3,13 @@
 import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
-import * as React from "react"
 import { SectionCard } from "@/components/common/section-card"
+import { useIsClient } from "@/lib/client"
 
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  // The stored theme is only known in the browser.
+  const mounted = useIsClient()
 
   return (
     <SectionCard title="Appearance">

@@ -20,7 +20,7 @@ import {
   CollapsibleTrigger,
 } from "@workspace/ui/components/collapsible"
 import { CalendarPlus, ChevronDown, Repeat } from "lucide-react"
-import * as React from "react"
+import { useBrowserValue } from "@/lib/client"
 
 type Props = {
   origin: string
@@ -50,8 +50,10 @@ type Action = {
  */
 export function AddToCalendar(props: Props) {
   const { origin, token, period, kind, plan, title, householdLabel, currency, pageUrl } = props
-  const [platform, setPlatform] = React.useState<Platform | null>(null)
-  React.useEffect(() => setPlatform(detectPlatform(navigator.userAgent, navigator.maxTouchPoints)), [])
+  const platform = useBrowserValue<Platform | null>(
+    () => detectPlatform(navigator.userAgent, navigator.maxTouchPoints),
+    null
+  )
 
   const feed = `${origin}/r/${token}/calendar.ics`
   const oneOff = `${feed}?${new URLSearchParams({ period, kind, plan: plan.key })}`

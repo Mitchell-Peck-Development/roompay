@@ -48,8 +48,7 @@ type Props = {
   payload: SharePayload | null
   published?: Published
   paid: PaidEntry[]
-  /** Monthly statements are saved to History when published. */
-  needsSave?: boolean
+  /** Monthly statements are saved to History as they're published. */
   beforePublish?(): void
 }
 
@@ -272,7 +271,13 @@ export function ShareCard({
             <Separator />
             <PaidTracker
               plan={plan}
-              planNote={remote?.chosenPlan ? `picked by ${who}` : "until they pick one"}
+              planNote={
+                payload.plans.length === 1
+                  ? "the schedule"
+                  : remote?.chosenPlan
+                    ? `picked by ${who}`
+                    : "until they pick one"
+              }
               entries={paid}
               statement={statement}
               personId={personId}

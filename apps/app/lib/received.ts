@@ -13,29 +13,50 @@ export type ReceivedLink = {
   seenAt: string
 }
 
-export function readReceived(): ReceivedLink[] {
+const listeners = new Set<() => void>()
+
+export function subscribeReceived(listener: () => void) {
+  listeners.add(listener)
+  const onStorage = (event: StorageEvent) => event.key === KEY && listener()
+  window.addEventListener("storage", onStorage)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener("storage", onStorage)
+  }
+}
+
+/** The raw stored string — a stable snapshot for useSyncExternalStore. */
+export function receivedSnapshot(): string {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]")
-    return Array.isArray(raw) ? raw.filter((r) => typeof r?.token === "string") : []
+    return localStorage.getItem(KEY) ?? "[]"
+  } catch {
+    return "[]"
+  }
+}
+
+export function parseReceived(raw: string): ReceivedLink[] {
+  try {
+    const list = JSON.parse(raw)
+    return Array.isArray(list) ? list.filter((r) => typeof r?.token === "string") : []
   } catch {
     return []
   }
 }
 
-export function rememberReceived(link: Omit<ReceivedLink, "seenAt">) {
+function write(list: ReceivedLink[]) {
   try {
-    const rest = readReceived().filter((r) => r.token !== link.token)
-    const next = [{ ...link, seenAt: new Date().toISOString() }, ...rest].slice(0, MAX)
-    localStorage.setItem(KEY, JSON.stringify(next))
+    localStorage.setItem(KEY, JSON.stringify(list))
   } catch {
     // Private browsing or storage disabled — remembering is only a convenience.
   }
+  listeners.forEach((listener) => listener())
+}
+
+export function rememberReceived(link: Omit<ReceivedLink, "seenAt">) {
+  const rest = parseReceived(receivedSnapshot()).filter((r) => r.token !== link.token)
+  write([{ ...link, seenAt: new Date().toISOString() }, ...rest].slice(0, MAX))
 }
 
 export function forgetReceived(token: string) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(readReceived().filter((r) => r.token !== token)))
-  } catch {
-    // ignore
-  }
+  write(parseReceived(receivedSnapshot()).filter((r) => r.token !== token))
 }

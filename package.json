@@ -13,6 +13,7 @@
     "dev:web": "pnpm --filter web dev"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "prettier": "^3.8.3",

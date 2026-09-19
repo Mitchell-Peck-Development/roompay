@@ -9,12 +9,15 @@ import { shareClient } from "./share-client"
  * Refreshes on mount, whenever the window regains focus, and on demand.
  */
 export function useLinkStatus(token: string | undefined) {
-  const [status, setStatus] = React.useState<LinkStatus | null>(null)
+  // Tagged with the token it belongs to, so a stale answer is never shown
+  // for a different (or forgotten) link.
+  const [entry, setEntry] = React.useState<{ token: string; status: LinkStatus } | null>(null)
 
-  const refresh = React.useCallback(async () => {
-    if (!token) return setStatus(null)
-    const result = await shareClient.status([token])
-    if (result.ok) setStatus(result.links[token] ?? { ok: false })
+  const refresh = React.useCallback((): Promise<void> => {
+    if (!token) return Promise.resolve()
+    return shareClient.status([token]).then((result) => {
+      if (result.ok) setEntry({ token, status: result.links[token] ?? { ok: false } })
+    })
   }, [token])
 
   React.useEffect(() => {
@@ -29,5 +32,5 @@ export function useLinkStatus(token: string | undefined) {
     }
   }, [refresh])
 
-  return { status, refresh }
+  return { status: entry && entry.token === token ? entry.status : null, refresh }
 }

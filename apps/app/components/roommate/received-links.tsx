@@ -3,12 +3,12 @@
 import { ChevronRight, X } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
-import { type ReceivedLink, forgetReceived, readReceived } from "@/lib/received"
+import { forgetReceived, parseReceived, receivedSnapshot, subscribeReceived } from "@/lib/received"
 
 /** Links this device has opened before — for a roommate landing on the home page. */
 export function ReceivedLinks() {
-  const [links, setLinks] = React.useState<ReceivedLink[]>([])
-  React.useEffect(() => setLinks(readReceived()), [])
+  const raw = React.useSyncExternalStore(subscribeReceived, receivedSnapshot, () => "[]")
+  const links = React.useMemo(() => parseReceived(raw), [raw])
   if (links.length === 0) return null
 
   return (
@@ -30,10 +30,7 @@ export function ReceivedLinks() {
               type="button"
               aria-label="Forget this link"
               className="mr-2 rounded-md p-2 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                forgetReceived(link.token)
-                setLinks(readReceived())
-              }}
+              onClick={() => forgetReceived(link.token)}
             >
               <X className="size-4" />
             </button>

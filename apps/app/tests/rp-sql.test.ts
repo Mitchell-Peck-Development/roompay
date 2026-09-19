@@ -7,6 +7,24 @@ import { h, payload } from "./helpers"
 
 let rp: Awaited<ReturnType<typeof createPgliteBackend>>
 
+type ViewResult = {
+  link: {
+    id: string
+    household_label: string
+    roommate_label: string
+    preferred_plan: string | null
+    expires_at: string
+  }
+  statements: {
+    period: string
+    kind: string
+    payload: { plans: unknown[] }
+    chosen_plan: string | null
+    chosen_at: string | null
+    revision: number
+  }[]
+}
+
 const pub = (overrides: Record<string, unknown> = {}) =>
   rp.call<{ revision: number; expires_at: string }>("publish", {
     p_token_hash: h(1),
@@ -130,7 +148,7 @@ describe("rp.view / rp.pick", () => {
     await pub()
     await pub({ p_period: "2026-11", p_last_due_on: "2026-11-22" })
     await pub({ p_period: "2026-11", p_kind: "catchup", p_last_due_on: "2026-11-22" })
-    const v = await rp.call<{ link: any; statements: any[] }>("view", { p_token_hash: h(1) })
+    const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
     expect(v.link).toMatchObject({
       household_label: "Unit 3012",
@@ -144,7 +162,7 @@ describe("rp.view / rp.pick", () => {
       ["2026-11", "catchup"],
       ["2026-10", "monthly"],
     ])
-    expect(v.statements[0].payload.plans).toHaveLength(2)
+    expect(v.statements[0]!.payload.plans).toHaveLength(2)
     expect(v.statements[0]).toMatchObject({ chosen_plan: null, revision: 1 })
     expect(JSON.stringify(v)).not.toContain(h(1))
     expect(JSON.stringify(v)).not.toContain(h(2))
@@ -171,24 +189,24 @@ describe("rp.view / rp.pick", () => {
     expect(await pick("weekly")).toMatchObject({ ok: true, revision: 2 })
     expect(await pick("nope")).toEqual({ ok: false, error: "invalid" })
 
-    let v = await rp.call<{ link: any; statements: any[] }>("view", { p_token_hash: h(1) })
+    let v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
     expect(v.link.preferred_plan).toBe("weekly")
-    expect(v.statements[0].chosen_plan).toBe("weekly")
-    expect(v.statements[0].chosen_at).toBeTruthy()
+    expect(v.statements[0]!.chosen_plan).toBe("weekly")
+    expect(v.statements[0]!.chosen_at).toBeTruthy()
 
     await pub({ p_payload: payload(["full"]) })
     v = await rp.call("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
-    expect(v.statements[0].chosen_plan).toBeNull()
-    expect(v.statements[0].chosen_at).toBeNull()
+    expect(v.statements[0]!.chosen_plan).toBeNull()
+    expect(v.statements[0]!.chosen_at).toBeNull()
   })
 
   it("keeps the pick when the owner republishes the same plans", async () => {
     await pub()
     await rp.call("pick", { p_token_hash: h(1), p_period: "2026-10", p_kind: "monthly", p_plan: "weekly" })
     await pub()
-    const v = await rp.call<{ statements: any[] }>("view", { p_token_hash: h(1) })
+    const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
     expect(v.statements[0]).toMatchObject({ chosen_plan: "weekly", revision: 3 })
   })
@@ -209,7 +227,7 @@ describe("rp.unpublish / rp.revoke", () => {
       await rp.call("unpublish", { p_token_hash: h(1), p_write_key_hash: h(2), ...month })
     ).toMatchObject({ ok: true })
 
-    const v = await rp.call<{ statements: any[] }>("view", { p_token_hash: h(1) })
+    const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     expect(v.ok && v.statements).toEqual([])
 
     expect(await rp.call("revoke", { p_token_hash: h(1), p_write_key_hash: h(2) })).toMatchObject({ ok: true })

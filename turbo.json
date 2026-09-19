@@ -43,5 +43,14 @@
       ],
       "outputs": []
     }
-  }
+  },
+  "globalEnv": [
+    "NODE_ENV",
+    "NEXT_PUBLIC_APP_URL",
+    "SUPABASE_URL",
+    "SUPABASE_PUBLISHABLE_KEY",
+    "RP_BACKEND",
+    "RP_PGLITE_DIR",
+    "RP_MIGRATIONS_DIR"
+  ]
 }

@@ -5,6 +5,7 @@ import {
   computeCatchup,
   formatLongDate,
   isISODate,
+  itemsWithRecentDefaults,
   periodOf,
   todayISO,
 } from "@workspace/core"
@@ -40,9 +41,11 @@ export function CatchupTab() {
     if (person && !record) actions.ensureCatchup(person.personId, todayISO())
   }, [person, record])
 
+  // Bills that vary start from whatever was last entered for them.
+  const items = React.useMemo(() => itemsWithRecentDefaults(data), [data])
   const result = React.useMemo(
-    () => (record ? computeCatchup({ record, items: data.items, split: data.split, people: data.people }) : null),
-    [record, data.items, data.split, data.people]
+    () => (record ? computeCatchup({ record, items, split: data.split, people: data.people }) : null),
+    [record, items, data.split, data.people]
   )
 
   if (!person) {
@@ -91,10 +94,11 @@ export function CatchupTab() {
 
         <h3 className="mt-5 mb-1 text-sm font-semibold">A typical full month</h3>
         <p className="mb-2 text-xs text-muted-foreground">
-          Estimates are fine. Fixed items start from their usual amount; the split is your default from Setup.
+          Estimates are fine. Each item starts from its usual or most recent amount; the split is your default
+          from Setup.
         </p>
         <div className="flex flex-col divide-y">
-          {data.items
+          {items
             .filter((item) => item.enabled)
             .map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-2">
