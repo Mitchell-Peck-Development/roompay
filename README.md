@@ -111,16 +111,30 @@ Two Vercel projects (or similar) from this repo, with root directories `apps/app
 
 ## Offset bills, residency and the Bills calendar
 
-Every line item says what stretch of service its bill pays for, and every roommate can say when
-they moved in and out. Shares are then weighted by the days of a bill's service window each
-person was actually here — one mechanism that covers bills in arrears, mid-month move-ins and
-move-outs alike.
+A bill has three dates, and they move independently. The sewer statement that turns up in
+September is **billed** in September, **covers** August's service, and isn't **due** until
+1 October. RoomPay keeps all three apart, because each answers a different question:
+
+| | what it is | what it decides |
+| --- | --- | --- |
+| **Billed** | the statement it lands on (`month.period`) | which month's paperwork it belongs to |
+| **Covers** | the stretch of service it pays for (`covers: { start, end }`) | **who owes it** |
+| **Due** | when the money has to leave (`dueDate`) | when you pay it, and where it sits on the calendar |
+
+Shares are weighted by the days of a bill's *coverage* each roommate was actually here — one
+mechanism for bills in arrears, mid-month move-ins and move-outs alike. A due date never moves
+money between people; it only moves the bill around the calendar.
 
 - **Coverage** lives on the item (Setup → Line items): *this month*, *last month*, *2 months
   back*, and how many months one bill spans. Rent and fees default to the month they're billed in;
-  water, sewer and power default to the month before. Each month's line takes a concrete
-  `covers: { start, end }` from that, overridable for a single month from its "Covers…" panel —
-  for the quarterly sewer bill, or the one that turned up a month late.
+  water, sewer and power default to the month before.
+- **Due** lives there too, as a month offset plus a day — *the following month*, the 1st — so a
+  bill billed now can fall due next month, or (for a landlord who wants rent early) the month
+  before. It's clamped into whatever month it lands in, so the 31st is the 28th in February.
+- Both are concrete on each month's line and overridable for a single month from that bill's
+  panel — for the quarterly sewer bill, or the one that turned up late. Setting a date by hand
+  remembers the *gap* from the billed month, not just the day, so next month's statement comes
+  out right.
 - **Residency** lives on the person (Setup → Roommates). Leave it empty and nothing prorates, so
   existing data behaves exactly as before. Set a move-in date and every bill is weighted by it.
   The Catch-up tab's move-in date is the same field.
@@ -129,10 +143,10 @@ move-outs alike.
 - **Day-exact.** Weights are whole days over the window's day count, not a rounded fraction, so
   the parts still add up to the cent.
 
-The **Bills** tab lays the month out as a calendar: each bill on the day it falls due, marked when
-it pays for earlier service. Tapping one sets its amount, its due date and the period it covers.
-Bills with no due date sit in "Not on the calendar" until you give them one — the date only
-decides where a bill shows up, never who owes it.
+The **Bills** tab lays a statement out as a calendar, following the due dates wherever they land:
+one grid per month the statement actually has payments in, so a bill billed in September and due
+1 October appears under October, labelled *due after this statement*. Bills with no due date sit
+in "Not on the calendar" until you give them one.
 
 A move-in catch-up works the same way, statement by statement: a roommate arriving in September
 owes nothing of the water bill that September's statement carries (it's August's), and picks it up

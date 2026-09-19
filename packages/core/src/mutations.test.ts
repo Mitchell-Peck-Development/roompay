@@ -286,12 +286,28 @@ describe("residency and coverage", () => {
     expect(line("Sewer").covers).toEqual({ start: "2026-08-01", end: "2026-08-01" })
   })
 
-  it("remembers the day a bill lands for next month", () => {
+  it("remembers how a bill falls due, not just its day", () => {
     M.setLineDueDate(data, line("Power").id, "2026-09-18", now)
-    expect(item("Power").dueDay).toBe(18)
+    expect(item("Power").due).toEqual({ offsetMonths: 0, day: 18 })
+
+    // Sewer arrives in September for August, due the 1st of October. Next
+    // month's statement has to put it on 1 November, not 1 October.
+    M.setLineDueDate(data, line("Sewer").id, "2026-10-01", now)
+    expect(item("Sewer").due).toEqual({ offsetMonths: 1, day: 1 })
+    M.startNewMonth(data, "2026-10", now)
+    expect(line("Sewer").dueDate).toBe("2026-11-01")
+    expect(line("Sewer").covers).toEqual({ start: "2026-09-01", end: "2026-09-30" })
+
     M.setLineDueDate(data, line("Power").id, null, now)
-    expect(item("Power").dueDay).toBeUndefined()
+    expect(item("Power").due).toBeUndefined()
     expect(line("Power").dueDate).toBeUndefined()
+  })
+
+  it("carries a due rule set in Setup into the working month", () => {
+    M.upsertItem(data, { ...item("Sewer"), due: { offsetMonths: 1, day: 1 } })
+    expect(line("Sewer").dueDate).toBe("2026-10-01")
+    M.upsertItem(data, { ...item("Sewer"), due: undefined })
+    expect(line("Sewer").dueDate).toBeUndefined()
   })
 
   it("still validates after all of it", () => {

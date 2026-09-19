@@ -1,9 +1,17 @@
 "use client"
 
-import { type ItemTemplate, formatMoney, isOffset, normalizeCoverage, ordinal } from "@workspace/core"
+import {
+  type ItemTemplate,
+  formatMoney,
+  isDueLater,
+  isOffset,
+  normalizeCoverage,
+  normalizeDue,
+  ordinal,
+} from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Switch } from "@workspace/ui/components/switch"
-import { ArrowDown, ArrowUp, History, Pencil, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, CalendarClock, History, Pencil, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
 import { SectionCard } from "@/components/common/section-card"
 import { describeItemSplit } from "@/components/month/line-split-popover"
@@ -22,6 +30,21 @@ function summary(item: ItemTemplate, currency: string): string {
     return item.meter?.rate ? `Metered · ${item.meter.rate} per ${unit}` : `Metered · per ${unit}`
   }
   return "From the statement"
+}
+
+/** "Due the 1st of the following month" — when the money actually leaves. */
+function dueLabel(item: ItemTemplate): string | null {
+  const due = normalizeDue(item)
+  if (!due) return null
+  const when =
+    due.offsetMonths === 0
+      ? ""
+      : due.offsetMonths === 1
+        ? " of the following month"
+        : due.offsetMonths === -1
+          ? " of the month before"
+          : `, ${Math.abs(due.offsetMonths)} months ${due.offsetMonths > 0 ? "later" : "earlier"}`
+  return `Due the ${ordinal(due.day)}${when}`
 }
 
 /** "Covers last month" — the bit that decides who's actually on the hook. */
@@ -73,13 +96,22 @@ export function ItemsEditor() {
               <p className="truncate text-sm font-medium">{item.label || "Untitled"}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {summary(item, data.household.currency)}
-                {item.dueDay !== undefined && ` · due the ${ordinal(item.dueDay)}`}
                 {item.split.mode !== "default" && ` · ${describeItemSplit(item.split, people)}`}
               </p>
               {isOffset(item.coverage) && (
                 <p className="flex items-center gap-1 text-xs text-muted-foreground">
                   <History className="size-3 shrink-0" aria-hidden />
                   {coversLabel(item)}
+                </p>
+              )}
+              {dueLabel(item) && (
+                <p
+                  className={`flex items-center gap-1 text-xs ${
+                    isDueLater(normalizeDue(item)) ? "text-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  <CalendarClock className="size-3 shrink-0" aria-hidden />
+                  {dueLabel(item)}
                 </p>
               )}
             </div>

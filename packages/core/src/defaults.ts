@@ -1,4 +1,4 @@
-import { coverageWindow, dueDateFor } from "./coverage"
+import { coverageWindow, dueDateFor, normalizeDue } from "./coverage"
 import { type Period, defaultPeriod, formatPeriod } from "./dates"
 import { newId } from "./ids"
 import type {
@@ -26,7 +26,10 @@ export function defaultItems(): ItemTemplate[] {
   })
   // Rent and fees are paid for the month ahead; metered utilities almost
   // always arrive a month in arrears. Both are editable per item in Setup.
-  const rent = { dueDay: 1, coverage: { offsetMonths: 0, spanMonths: 1 } }
+  const rent = {
+    coverage: { offsetMonths: 0, spanMonths: 1 },
+    due: { offsetMonths: 0, day: 1 },
+  }
   const arrears = { coverage: { offsetMonths: 1, spanMonths: 1 } }
   return [
     item("Rent", "fixed", rent),
@@ -51,7 +54,7 @@ export function lineFromTemplate(
   period: Period,
   prevReading?: string
 ): MonthLine {
-  const dueDate = dueDateFor(period, template.dueDay)
+  const dueDate = dueDateFor(period, normalizeDue(template))
   const line: MonthLine = {
     id: newId(),
     templateId: template.id,

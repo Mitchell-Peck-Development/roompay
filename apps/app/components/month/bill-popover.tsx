@@ -6,10 +6,12 @@ import {
   type ServiceWindow,
   coverageOf,
   coverageWindow,
+  formatPeriod,
   formatWindow,
   isISODate,
   lineAmountCents,
   meterDetail,
+  periodOf,
 } from "@workspace/core"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -19,7 +21,7 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
-import { History } from "lucide-react"
+import { CalendarClock, History } from "lucide-react"
 import type * as React from "react"
 import { Amount } from "@/components/common/amount"
 import { MoneyInput } from "@/components/common/money-input"
@@ -67,6 +69,7 @@ export function BillPopover({
   const preset = coverageOf(period, covers)
   const selected =
     preset?.spanMonths === 1 && preset.offsetMonths <= 2 ? String(preset.offsetMonths) : ""
+  const dueElsewhere = Boolean(line.dueDate && periodOf(line.dueDate) !== period)
 
   const setDate =
     (key: keyof ServiceWindow) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,23 +170,34 @@ export function BillPopover({
         </div>
 
         <div className="flex flex-col gap-1 border-t pt-3">
-          <Label htmlFor={`due-${line.id}`} className="text-xs text-muted-foreground">
-            Due date — where it sits on the Bills calendar
+          <Label htmlFor={`due-${line.id}`} className="text-sm font-medium">
+            When is it due?
           </Label>
+          <p className="text-xs text-muted-foreground">
+            Any date — a bill billed now can fall due next month.
+          </p>
           <Input
             id={`due-${line.id}`}
             type="date"
-            className="tabular h-9"
+            className="tabular mt-1 h-9"
             value={line.dueDate ?? ""}
             onChange={(e) =>
               actions.setLineDueDate(line.id, isISODate(e.target.value) ? e.target.value : null)
             }
           />
+          {dueElsewhere && (
+            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <CalendarClock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              Due in {formatPeriod(periodOf(line.dueDate!))}, so it sits on that month&apos;s grid.
+              Later statements will keep the same gap.
+            </p>
+          )}
         </div>
 
-        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+        <p className="flex items-start gap-1.5 border-t pt-3 text-xs text-muted-foreground">
           <History className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          Covers {formatWindow(covers)}. Set it for every month in Setup → Line items.
+          Covers {formatWindow(covers)}. Both of these repeat every month once you set them in
+          Setup → Line items.
         </p>
       </PopoverContent>
     </Popover>

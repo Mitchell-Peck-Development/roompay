@@ -5,9 +5,10 @@ import {
   type ItemTemplate,
   SAME_MONTH,
   describeCoverage,
+  describeDue,
   newId,
   normalizeCoverage,
-  ordinal,
+  normalizeDue,
 } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -21,6 +22,13 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { RadioGroup, RadioGroupItem } from "@workspace/ui/components/radio-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
 import * as React from "react"
 import { MoneyInput } from "@/components/common/money-input"
@@ -42,6 +50,15 @@ const OFFSETS = [
   { months: 0, label: "This month", hint: "Rent, fees — paid for the month it's billed in." },
   { months: 1, label: "Last month", hint: "Most utilities: the bill that lands now is last month's usage." },
   { months: 2, label: "2 months back", hint: "Slow municipal billing — water and sewer often run this far behind." },
+] as const
+
+/** When the money leaves, relative to the month the bill is billed in. */
+const DUE_MONTHS = [
+  { value: "none", label: "No due date" },
+  { value: "-1", label: "The month before" },
+  { value: "0", label: "The month it's billed" },
+  { value: "1", label: "The following month" },
+  { value: "2", label: "Two months after" },
 ] as const
 
 export function blankItem(): ItemTemplate {
@@ -79,12 +96,17 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
   const people = data.people.filter((p) => !p.archived).map((p) => ({ personId: p.id, nickname: p.nickname }))
   const meter = draft.meter ?? { unit: "kWh", rate: "", baseFeeCents: 0, input: "usage" as const }
   const coverage: Coverage = normalizeCoverage(draft.coverage)
+  const due = normalizeDue(draft)
   const patch = (next: Partial<ItemTemplate>) => setDraft((d) => ({ ...d, ...next }))
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!draft.label.trim()) return
     const item: ItemTemplate = { ...draft, label: draft.label.trim(), coverage }
+    // `due` supersedes the day-only form; never leave both on the record.
+    delete item.dueDay
+    if (due) item.due = due
+    else delete item.due
     if (item.kind === "metered") item.meter = meter
     else delete item.meter
     if (item.kind !== "fixed") delete item.defaultAmountCents
@@ -164,32 +186,75 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-span">Months of service per bill</Label>
+          <Input
+            id="item-span"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={12}
+            className="tabular h-10 w-24"
+            value={coverage.spanMonths}
+            onChange={(e) =>
+              patch({
+                coverage: normalizeCoverage({
+                  ...coverage,
+                  spanMonths: Number(e.target.value) || 1,
+                }),
+              })
+            }
+          />
+          <span className="text-xs text-muted-foreground">
+            {coverage.spanMonths > 1
+              ? "A quarterly or seasonal bill."
+              : "One month at a time."}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border p-3">
+        <div className="flex flex-col gap-1">
+          <Label>When is it due?</Label>
+          <p className="text-xs text-muted-foreground">
+            Separate from what it covers, and from when it turns up. A sewer bill can arrive in
+            September for August&apos;s service and not be due until 1 October.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-[1fr_auto] gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-span">Months per bill</Label>
-            <Input
-              id="item-span"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={12}
-              className="tabular h-10"
-              value={coverage.spanMonths}
-              onChange={(e) =>
+            <Label htmlFor="item-due-month" className="text-xs text-muted-foreground">
+              Month
+            </Label>
+            <Select
+              value={due ? String(due.offsetMonths) : "none"}
+              onValueChange={(value) =>
                 patch({
-                  coverage: normalizeCoverage({
-                    ...coverage,
-                    spanMonths: Number(e.target.value) || 1,
-                  }),
+                  dueDay: undefined,
+                  due:
+                    value === "none"
+                      ? undefined
+                      : { offsetMonths: Number(value), day: due?.day ?? 1 },
                 })
               }
-            />
-            <span className="text-xs text-muted-foreground">
-              {coverage.spanMonths > 1 ? "A quarterly or seasonal bill." : "One month at a time."}
-            </span>
+            >
+              <SelectTrigger id="item-due-month" className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DUE_MONTHS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-due-day">Usually due on the…</Label>
+            <Label htmlFor="item-due-day" className="text-xs text-muted-foreground">
+              Day
+            </Label>
             <Input
               id="item-due-day"
               type="number"
@@ -197,20 +262,19 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
               min={1}
               max={31}
               placeholder="—"
-              className="tabular h-10"
-              value={draft.dueDay ?? ""}
+              disabled={!due}
+              className="tabular h-10 w-20"
+              value={due?.day ?? ""}
               onChange={(e) => {
                 const day = Number(e.target.value)
-                patch({ dueDay: day >= 1 && day <= 31 ? day : undefined })
+                if (day >= 1 && day <= 31) {
+                  patch({ dueDay: undefined, due: { offsetMonths: due?.offsetMonths ?? 0, day } })
+                }
               }}
             />
-            <span className="text-xs text-muted-foreground">
-              {draft.dueDay
-                ? `Lands on the ${ordinal(draft.dueDay)} in the Bills calendar.`
-                : "Optional — puts it on the Bills calendar."}
-            </span>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">{describeDue(due)}</p>
       </div>
 
       {draft.kind === "fixed" && (

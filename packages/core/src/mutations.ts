@@ -1,5 +1,5 @@
 import { defaultCatchupDates } from "./catchup"
-import { coverageWindow, dueDateFor } from "./coverage"
+import { coverageWindow, dueDateFor, dueRuleFrom, normalizeDue } from "./coverage"
 import type { ISODate, Period } from "./dates"
 import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
 import { newId, randomToken } from "./ids"
@@ -139,7 +139,7 @@ export function upsertItem(draft: AppData, item: ItemTemplate) {
   line.label = item.label
   line.split = structuredClone(item.split)
   line.covers = coverageWindow(draft.current.period, item.coverage)
-  const dueDate = dueDateFor(draft.current.period, item.dueDay)
+  const dueDate = dueDateFor(draft.current.period, normalizeDue(item))
   if (dueDate) line.dueDate = dueDate
   else delete line.dueDate
   if (line.kind !== item.kind) {
@@ -280,11 +280,14 @@ export function setLineDueDate(
   if (!line) return
   if (date) line.dueDate = date
   else delete line.dueDate
-  // A bill that always lands on the same day starts there next month too.
+  // A bill that always falls due the same way starts there next month too —
+  // remembering how far ahead of the billed month it sits, not just the day,
+  // so "the 1st of the month after" doesn't collapse to "the 1st".
   const template = draft.items.find((t) => t.id === line.templateId)
   if (template) {
-    if (date) template.dueDay = Number(date.slice(8, 10))
-    else delete template.dueDay
+    delete template.dueDay
+    if (date) template.due = dueRuleFrom(draft.current.period, date)
+    else delete template.due
   }
   touchCurrent(draft, now)
 }

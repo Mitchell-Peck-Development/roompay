@@ -42,6 +42,17 @@ export const serviceWindowSchema = z.object({
   end: isoDateSchema,
 })
 
+/**
+ * When a bill falls due, relative to the month it's billed in. Kept apart
+ * from coverage because the two move independently: the sewer bill that
+ * arrives in September is August's service and isn't due until October 1st.
+ */
+export const dueRuleSchema = z.object({
+  /** 0 = due in the month it's billed, 1 = the month after, -1 = before. */
+  offsetMonths: z.number().int().min(-2).max(12),
+  day: z.number().int().min(1).max(31),
+})
+
 export const splitSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("even") }),
   z.object({ mode: z.literal("percent"), pct: z.record(z.string(), percent) }),
@@ -74,7 +85,9 @@ export const itemTemplateSchema = z.object({
   split: itemSplitSchema,
   /** Omitted means the bill covers the month it's billed in. */
   coverage: coverageSchema.optional(),
-  /** Day of the month the bill usually falls due, for the bills calendar. */
+  /** When it usually falls due, for the bills calendar. */
+  due: dueRuleSchema.optional(),
+  /** Superseded by `due`; still read so data written before it survives. */
   dueDay: z.number().int().min(1).max(31).optional(),
 })
 
@@ -172,6 +185,7 @@ export type Person = z.infer<typeof personSchema>
 export type Participant = z.infer<typeof participantSchema>
 export type Coverage = z.infer<typeof coverageSchema>
 export type ServiceWindow = z.infer<typeof serviceWindowSchema>
+export type DueRule = z.infer<typeof dueRuleSchema>
 export type Split = z.infer<typeof splitSchema>
 export type ItemSplit = z.infer<typeof itemSplitSchema>
 export type ItemKind = z.infer<typeof itemKindSchema>

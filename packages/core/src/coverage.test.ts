@@ -4,10 +4,14 @@ import {
   coverageOf,
   coverageWindow,
   describeCoverage,
+  describeDue,
   dueDateFor,
+  dueRuleFrom,
   formatWindow,
+  isDueLater,
   isOffset,
   normalizeCoverage,
+  normalizeDue,
   residentDays,
   residentFraction,
   windowDays,
@@ -55,9 +59,57 @@ describe("coverageWindow", () => {
   })
 
   it("puts a bill on its usual day, clamped into short months", () => {
-    expect(dueDateFor("2026-09", 22)).toBe("2026-09-22")
-    expect(dueDateFor("2027-02", 31)).toBe("2027-02-28")
+    expect(dueDateFor("2026-09", { offsetMonths: 0, day: 22 })).toBe("2026-09-22")
+    expect(dueDateFor("2027-02", { offsetMonths: 0, day: 31 })).toBe("2027-02-28")
     expect(dueDateFor("2026-09", undefined)).toBeUndefined()
+  })
+})
+
+describe("due dates", () => {
+  it("lets a bill fall due after the month it's billed in", () => {
+    // The sewer bill arrives in September for August's service, and isn't
+    // due until the 1st of October.
+    expect(dueDateFor("2026-09", { offsetMonths: 1, day: 1 })).toBe("2026-10-01")
+    expect(dueDateFor("2026-12", { offsetMonths: 1, day: 15 })).toBe("2027-01-15")
+    expect(dueDateFor("2026-09", { offsetMonths: 2, day: 5 })).toBe("2026-11-05")
+    // And before it, for rent a landlord wants ahead of the month.
+    expect(dueDateFor("2026-10", { offsetMonths: -1, day: 25 })).toBe("2026-09-25")
+  })
+
+  it("clamps the day into whatever month it lands in", () => {
+    expect(dueDateFor("2027-01", { offsetMonths: 1, day: 31 })).toBe("2027-02-28")
+  })
+
+  it("reads a hand-picked date back as a rule that repeats", () => {
+    expect(dueRuleFrom("2026-09", "2026-10-01")).toEqual({ offsetMonths: 1, day: 1 })
+    expect(dueRuleFrom("2026-09", "2026-09-22")).toEqual({ offsetMonths: 0, day: 22 })
+    expect(dueRuleFrom("2026-12", "2027-01-15")).toEqual({ offsetMonths: 1, day: 15 })
+    // Round-trips, which is what makes next month's statement come out right.
+    const rule = dueRuleFrom("2026-09", "2026-10-01")
+    expect(dueDateFor("2026-10", rule)).toBe("2026-11-01")
+  })
+
+  it("reads the day-only form written before offsets existed", () => {
+    expect(normalizeDue({ dueDay: 12 })).toEqual({ offsetMonths: 0, day: 12 })
+    expect(normalizeDue({ due: { offsetMonths: 1, day: 1 }, dueDay: 9 })).toEqual({
+      offsetMonths: 1,
+      day: 1,
+    })
+    expect(normalizeDue({})).toBeUndefined()
+  })
+
+  it("says when it's due in words", () => {
+    expect(describeDue({ offsetMonths: 0, day: 1 })).toBe(
+      "Due the 1st of the month it's billed in."
+    )
+    expect(describeDue({ offsetMonths: 1, day: 1 })).toBe("Due the 1st of the following month.")
+    expect(describeDue({ offsetMonths: -1, day: 25 })).toBe("Due the 25th of the month before.")
+    expect(describeDue({ offsetMonths: 3, day: 2 })).toBe(
+      "Due the 2nd, 3 months after it's billed."
+    )
+    expect(isDueLater({ offsetMonths: 1, day: 1 })).toBe(true)
+    expect(isDueLater({ offsetMonths: 0, day: 1 })).toBe(false)
+    expect(isDueLater(undefined)).toBe(false)
   })
 })
 

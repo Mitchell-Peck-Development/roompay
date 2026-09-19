@@ -7,10 +7,11 @@ import {
   formatPeriod,
   formatShortDate,
   lastOfPeriod,
+  ordinal,
   periodOf,
   shiftPeriod,
 } from "./dates"
-import type { Coverage, Person, ServiceWindow } from "./schema"
+import type { Coverage, DueRule, ItemTemplate, Person, ServiceWindow } from "./schema"
 
 /**
  * Bills rarely cover the month they land in. The water and sewer statement
@@ -47,10 +48,62 @@ export function coverageWindow(
   return { start: firstOfPeriod(first), end: lastOfPeriod(last) }
 }
 
-/** When a bill on `period`'s statement falls due, from the item's usual day. */
-export function dueDateFor(period: Period, dueDay?: number): ISODate | undefined {
-  if (dueDay === undefined || !Number.isFinite(dueDay)) return undefined
-  return dateInPeriod(period, dueDay)
+/**
+ * An item's due rule, tolerating the day-only form written before due dates
+ * could fall outside the month they're billed in.
+ */
+export function normalizeDue(
+  item: Pick<ItemTemplate, "due" | "dueDay">
+): DueRule | undefined {
+  if (item.due) {
+    return {
+      offsetMonths: clamp(item.due.offsetMonths, -2, 12),
+      day: clamp(item.due.day, 1, 31),
+    }
+  }
+  if (item.dueDay === undefined || !Number.isFinite(item.dueDay)) return undefined
+  return { offsetMonths: 0, day: clamp(item.dueDay, 1, 31) }
+}
+
+/**
+ * When a bill on `period`'s statement falls due. The offset is what lets a
+ * bill you receive in September be due on the 1st of October; the day is
+ * clamped into whatever month that lands in (31 → 28 in February).
+ */
+export function dueDateFor(period: Period, due?: DueRule): ISODate | undefined {
+  if (!due) return undefined
+  return dateInPeriod(shiftPeriod(period, due.offsetMonths), due.day)
+}
+
+/** The rule a concrete due date implies for bills on `period`'s statement. */
+export function dueRuleFrom(period: Period, date: ISODate): DueRule {
+  return {
+    offsetMonths: clamp(monthsBetween(period, periodOf(date)), -2, 12),
+    day: Number(date.slice(8, 10)),
+  }
+}
+
+/** True when a bill isn't due in the month it's billed in. */
+export function isDueLater(due?: DueRule): boolean {
+  return (due?.offsetMonths ?? 0) !== 0
+}
+
+/** "Due the 1st of the following month." */
+export function describeDue(due?: DueRule): string {
+  if (!due) return "No due date — it won't sit on the Bills calendar."
+  const day = `the ${ordinal(due.day)}`
+  switch (due.offsetMonths) {
+    case 0:
+      return `Due ${day} of the month it's billed in.`
+    case 1:
+      return `Due ${day} of the following month.`
+    case -1:
+      return `Due ${day} of the month before.`
+    default:
+      return due.offsetMonths > 0
+        ? `Due ${day}, ${due.offsetMonths} months after it's billed.`
+        : `Due ${day}, ${-due.offsetMonths} months before it's billed.`
+  }
 }
 
 /** The coverage a concrete window came from, as far as it can be read back. */
