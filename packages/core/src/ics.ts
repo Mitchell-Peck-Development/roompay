@@ -1,7 +1,8 @@
 import { type ISODate, addDays, formatShortDate } from "./dates"
-import { formatMoney } from "./money"
+import { type Cents, formatMoney } from "./money"
 import type { Plan } from "./plans"
 import type { SharePayload } from "./share"
+import { STATUS_LABEL, paymentStatuses, statusRank } from "./status"
 
 export type CalendarEvent = {
   uid: string
@@ -12,6 +13,8 @@ export type CalendarEvent = {
   /** Bumped whenever the event changes so calendar apps update in place. */
   sequence?: number
   stamp: Date
+  /** When the event last changed, if later than `stamp`. */
+  modified?: Date
   /** Adds a 9 am reminder on the day. */
   alarm?: boolean
 }
@@ -58,6 +61,7 @@ function utcStamp(date: Date): string {
 }
 
 function duration(minutes: number): string {
+  if (minutes % 1440 === 0) return `P${minutes / 1440}D`
   if (minutes % 60 === 0) return `PT${minutes / 60}H`
   return `PT${minutes}M`
 }
@@ -87,7 +91,7 @@ export function buildCalendar(options: {
       "BEGIN:VEVENT",
       `UID:${event.uid}`,
       `DTSTAMP:${utcStamp(event.stamp)}`,
-      `LAST-MODIFIED:${utcStamp(event.stamp)}`,
+      `LAST-MODIFIED:${utcStamp(event.modified ?? event.stamp)}`,
       `DTSTART;VALUE=DATE:${compactDate(event.date)}`,
       `DTEND;VALUE=DATE:${compactDate(addDays(event.date, 1))}`,
       `SUMMARY:${escapeText(event.summary)}`,
@@ -114,7 +118,14 @@ export function buildCalendar(options: {
   return lines.map(foldLine).join("\r\n") + "\r\n"
 }
 
-/** One event per payment of `plan`, with ids that stay put across edits. */
+/**
+ * One event per payment of `plan`, with ids that stay put across edits.
+ *
+ * With `status`, each title leads with where that payment stands on `today`
+ * (Future, Pending, Pay now, Overdue, Paid) — meant for subscribed calendars,
+ * which fetch the feed again every day. One-off imports are frozen copies, so
+ * they're built without it.
+ */
 export function statementEvents(args: {
   /** The link's row id — never the secret token. */
   linkId: string
@@ -124,29 +135,72 @@ export function statementEvents(args: {
   revision: number
   updatedAt: Date
   pageUrl?: string
+  status?: { receivedCents: Cents; today: ISODate }
 }): CalendarEvent[] {
-  const { linkId, householdLabel, payload, plan, revision, updatedAt, pageUrl } = args
+  const { linkId, householdLabel, payload, plan, revision, updatedAt, pageUrl, status } = args
   const who = householdLabel.trim() || "RoomPay"
-  const schedule = plan.payments
-    .map(
-      (p, i) =>
-        `${i + 1}. ${formatShortDate(p.date)} — ${formatMoney(p.amountCents, payload.currency)}`
-    )
+  const money = (cents: Cents) => formatMoney(cents, payload.currency)
+  const uid = (i: number) => `${linkId}-${payload.period}-${payload.kind}-${plan.key}-${i + 1}@roompay`
+
+  if (!status) {
+    const schedule = plan.payments
+      .map((p, i) => `${i + 1}. ${formatShortDate(p.date)} — ${money(p.amountCents)}`)
+      .join("\n")
+    return plan.payments.map((payment, i) => ({
+      uid: uid(i),
+      date: payment.date,
+      summary: `Pay ${money(payment.amountCents)} · ${who}`,
+      description: [
+        `${payload.title} · ${plan.name} · ${payment.label}`,
+        "",
+        schedule,
+        ...(pageUrl ? ["", pageUrl] : []),
+      ].join("\n"),
+      url: pageUrl,
+      sequence: revision,
+      stamp: updatedAt,
+      alarm: true,
+    }))
+  }
+
+  const rows = paymentStatuses(plan, status.receivedCents, status.today)
+  const dayStart = new Date(`${status.today}T00:00:00Z`)
+  const modified = dayStart > updatedAt ? dayStart : updatedAt
+  const schedule = rows
+    .map((row, i) => {
+      const note =
+        row.status === "paid"
+          ? " — paid"
+          : row.remainingCents < row.amountCents
+            ? ` — ${money(row.remainingCents)} still to pay`
+            : ""
+      return `${i + 1}. ${formatShortDate(row.date)} — ${money(row.amountCents)}${note}`
+    })
     .join("\n")
 
-  return plan.payments.map((payment, i) => ({
-    uid: `${linkId}-${payload.period}-${payload.kind}-${plan.key}-${i + 1}@roompay`,
-    date: payment.date,
-    summary: `Pay ${formatMoney(payment.amountCents, payload.currency)} · ${who}`,
-    description: [
-      `${payload.title} · ${plan.name} · ${payment.label}`,
-      "",
-      schedule,
-      ...(pageUrl ? ["", pageUrl] : []),
-    ].join("\n"),
-    url: pageUrl,
-    sequence: revision,
-    stamp: updatedAt,
-    alarm: true,
-  }))
+  return rows.map((row, i) => {
+    const label = STATUS_LABEL[row.status]
+    return {
+      uid: uid(i),
+      date: row.date,
+      summary:
+        row.status === "paid"
+          ? `${label} · ${money(row.amountCents)} · ${who}`
+          : `${label} · Pay ${money(row.remainingCents)} · ${who}`,
+      description: [
+        `${label} as of ${formatShortDate(status.today)} (updates daily).`,
+        `${payload.title} · ${plan.name} · ${row.label}`,
+        "",
+        schedule,
+        ...(pageUrl ? ["", pageUrl] : []),
+      ].join("\n"),
+      url: pageUrl,
+      // Rises with every edit and every step a payment takes towards paid,
+      // so calendar apps always treat the newer copy as the one to keep.
+      sequence: revision * 5 + statusRank(row.status),
+      stamp: updatedAt,
+      modified,
+      alarm: row.status !== "paid",
+    }
+  })
 }

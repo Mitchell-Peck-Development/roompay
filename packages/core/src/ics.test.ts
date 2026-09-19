@@ -65,6 +65,12 @@ describe("ics", () => {
       expect(ics).toContain(needle)
   })
 
+  it("says 'every day' as P1D", () => {
+    expect(buildCalendar({ name: "x", events: [], refreshMinutes: 1440 })).toContain(
+      "REFRESH-INTERVAL;VALUE=DURATION:P1D\r\nX-PUBLISHED-TTL:P1D"
+    )
+  })
+
   it("an empty calendar is still valid", () => {
     const ics = buildCalendar({ name: "x", events: [] })
     expect(ics).toContain("END:VCALENDAR")
@@ -120,4 +126,67 @@ describe("ics", () => {
       statementEvents({ linkId: "L1", householdLabel: "", payload, plan, revision: 1, updatedAt: stamp })[0]!.summary
     ).toBe("Pay $477.50 · RoomPay")
   })
+
+  describe("with a daily status", () => {
+    const plan = {
+      key: "weekly",
+      name: "Weekly",
+      payments: ["01", "08", "15", "18", "22"].map((d, i) => ({
+        date: `2026-10-${d}`,
+        amountCents: 10000,
+        label: `Payment ${i + 1} of 5`,
+      })),
+    }
+    const payload = {
+      v: 1 as const,
+      kind: "monthly" as const,
+      period: "2026-10",
+      title: "October 2026",
+      currency: "USD",
+      lines: [],
+      totalCents: 100000,
+      shareCents: 50000,
+      plans: [plan],
+      defaultPlan: "weekly",
+    }
+    const events = statementEvents({
+      linkId: "L1",
+      householdLabel: "Unit 3012",
+      payload,
+      plan,
+      revision: 2,
+      updatedAt: stamp,
+      status: { receivedCents: 15000, today: "2026-10-15" },
+    })
+
+    it("leads each title with where the payment stands", () => {
+      expect(events.map((e) => e.summary)).toEqual([
+        "Paid · $100.00 · Unit 3012",
+        "Overdue · Pay $50.00 · Unit 3012", // half received
+        "Pay now · Pay $100.00 · Unit 3012",
+        "Pending · Pay $100.00 · Unit 3012",
+        "Future · Pay $100.00 · Unit 3012",
+      ])
+    })
+
+    it("keeps ids stable and lets SEQUENCE rise as statuses move on", () => {
+      expect(events[0]!.uid).toBe("L1-2026-10-monthly-weekly-1@roompay")
+      expect(events.map((e) => e.sequence)).toEqual([14, 13, 12, 11, 10])
+      const tomorrow = statementEvents({
+        linkId: "L1", householdLabel: "Unit 3012", payload, plan, revision: 2, updatedAt: stamp,
+        status: { receivedCents: 15000, today: "2026-10-16" },
+      })
+      tomorrow.forEach((e, i) => expect(e.sequence!).toBeGreaterThanOrEqual(events[i]!.sequence!))
+      expect(tomorrow[2]!.summary).toMatch(/^Overdue/)
+    })
+
+    it("stops reminding once paid, and says when the status was worked out", () => {
+      expect(events.map((e) => e.alarm)).toEqual([false, true, true, true, true])
+      expect(events[1]!.description).toContain("Overdue as of Oct 15 (updates daily).")
+      expect(events[1]!.description).toContain("1. Oct 1 — $100.00 — paid")
+      expect(events[1]!.description).toContain("2. Oct 8 — $100.00 — $50.00 still to pay")
+      expect(events[0]!.modified).toEqual(new Date("2026-10-15T00:00:00Z"))
+    })
+  })
 })
+

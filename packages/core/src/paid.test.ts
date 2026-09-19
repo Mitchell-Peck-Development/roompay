@@ -34,6 +34,10 @@ describe("paidProgress", () => {
     expect([p.paidCents, p.remainingCents, p.overpaidCents]).toEqual([30000, 65500, 0])
   })
 
+  it("accepts a plain received total", () => {
+    expect(paidProgress(plan, 30000)).toEqual(paidProgress(plan, [entry(30000)]))
+  })
+
   it("reports overpayment", () => {
     const p = paidProgress(plan, [entry(100000)])
     expect(p.rows.every((r) => r.status === "paid")).toBe(true)

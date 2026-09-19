@@ -19,8 +19,8 @@ export type PaidProgress = {
  * stays right when a roommate pays a partial amount or switches plan: the
  * total is poured into the plan's rows in date order.
  */
-export function paidProgress(plan: Plan, entries: PaidEntry[]): PaidProgress {
-  const paidCents = entries.reduce((a, e) => a + e.amountCents, 0)
+export function paidProgress(plan: Plan, paid: PaidEntry[] | Cents): PaidProgress {
+  const paidCents = typeof paid === "number" ? paid : paidTotal(paid)
   const owed = plan.payments.reduce((a, p) => a + p.amountCents, 0)
   let pool = Math.max(0, paidCents)
 
@@ -38,4 +38,8 @@ export function paidProgress(plan: Plan, entries: PaidEntry[]): PaidProgress {
     remainingCents: Math.max(0, owed - paidCents),
     overpaidCents: Math.max(0, paidCents - owed),
   }
+}
+
+export function paidTotal(entries: PaidEntry[]): Cents {
+  return entries.reduce((sum, e) => sum + e.amountCents, 0)
 }
