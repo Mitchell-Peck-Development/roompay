@@ -1,7 +1,7 @@
 import { TOKEN_RE, isPeriod, statementKindSchema, todayISO } from "@workspace/core"
 import { appOrigin } from "@/lib/server/origin"
 import { buildFeed, buildOneOff } from "@/lib/server/rp/feed"
-import { viewLink } from "@/lib/server/rp/service"
+import { type LinkView, viewLink } from "@/lib/server/rp/service"
 
 function calendar(body: string, filename: string, status = 200): Response {
   return new Response(body, {
@@ -28,7 +28,18 @@ export async function GET(
   const { token } = await params
   const url = new URL(request.url)
   const origin = appOrigin(request)
-  const view = TOKEN_RE.test(token) ? await viewLink(token) : null
+  let view: LinkView | null
+  try {
+    view = TOKEN_RE.test(token) ? await viewLink(token) : null
+  } catch (error) {
+    // Never answer a hiccup with an empty calendar: subscribers would see
+    // every event vanish. A 503 makes calendar apps keep what they have.
+    console.error("[calendar]", error)
+    return new Response("Temporarily unavailable", {
+      status: 503,
+      headers: { "Retry-After": "600", "Cache-Control": "no-store" },
+    })
+  }
 
   const period = url.searchParams.get("period")
   if (period === null) {

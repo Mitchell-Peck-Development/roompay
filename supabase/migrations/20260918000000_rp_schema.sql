@@ -17,8 +17,9 @@
 -- database. It connects with the project's *publishable* key — no service role.
 --
 -- Because the functions are callable with a public key, they defend themselves:
--- strict input checks, a 32 KB payload cap, 40 statements per link, a circuit
--- breaker on new links, and automatic expiry.
+-- strict input checks, a 32 KB payload cap, 40 statements per link, months and
+-- due dates kept within two years of today (so nothing lives forever), a
+-- circuit breaker on new links, a hard ceiling on total storage, and expiry.
 --
 -- AFTER APPLYING — one manual step:
 --   Dashboard -> Project Settings -> API -> "Exposed schemas" -> add  rp
@@ -76,6 +77,17 @@ alter table rp.links enable row level security;
 alter table rp.statements enable row level security;
 
 -- -----------------------------------------------------------------------------
+-- Past this much stored statement data, publish() only accepts edits to what
+-- already exists — nothing new — so a flood can't grow the shared database
+-- without bound. Legitimate use is a few KB per month per roommate.
+-- -----------------------------------------------------------------------------
+create or replace function rp.storage_ceiling_bytes() returns bigint
+language sql
+stable
+set search_path = ''
+as $$ select 512::bigint * 1024 * 1024 $$;
+
+-- -----------------------------------------------------------------------------
 -- publish: create the link on first use, otherwise require its write key;
 -- upsert the statement; roll the expiry forward.
 -- -----------------------------------------------------------------------------
@@ -99,6 +111,9 @@ declare
   v_revision  integer;
   v_max_due   date;
   v_expires   timestamptz;
+  v_start     date;
+  v_this      date := date_trunc('month', now())::date;
+  v_full      boolean;
   v_household text := coalesce(p_household_label, '');
   v_roommate  text := coalesce(p_roommate_label, '');
   c_invalid   constant jsonb := jsonb_build_object('ok', false, 'error', 'invalid');
@@ -110,6 +125,13 @@ begin
   if p_period is null or p_period !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then return c_invalid; end if;
   if p_kind is null or p_kind not in ('monthly', 'catchup') then return c_invalid; end if;
   if p_last_due_on is null then return c_invalid; end if;
+  -- Months within two years of today, and due dates near their month: this is
+  -- what bounds how long anything can be kept alive.
+  v_start := to_date(p_period || '-01', 'YYYY-MM-DD');
+  if v_start < (v_this - interval '24 months')::date then return c_invalid; end if;
+  if v_start > (v_this + interval '24 months')::date then return c_invalid; end if;
+  if p_last_due_on < v_start - 31 then return c_invalid; end if;
+  if p_last_due_on > (v_start + interval '13 months')::date then return c_invalid; end if;
   if char_length(v_household) > 80 or char_length(v_roommate) > 80 then return c_invalid; end if;
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then return c_invalid; end if;
   if octet_length(p_payload::text) > 32768 then return c_invalid; end if;
@@ -124,9 +146,12 @@ begin
     return c_invalid;
   end if;
 
+  v_full := pg_catalog.pg_total_relation_size('rp.statements') > rp.storage_ceiling_bytes();
+
   select * into v_link from rp.links l where l.token_hash = p_token_hash for update;
 
   if not found then
+    if v_full then return jsonb_build_object('ok', false, 'error', 'busy'); end if;
     -- Circuit breaker: brand-new links are the only thing a stranger could use
     -- to fill this table, so cap how fast they can appear.
     if (select count(*) from rp.links l where l.created_at > now() - interval '1 hour') >= 300 then
@@ -142,6 +167,13 @@ begin
 
   if v_link.write_key_hash <> p_write_key_hash then
     return jsonb_build_object('ok', false, 'error', 'forbidden');
+  end if;
+
+  if v_full and not exists (
+    select 1 from rp.statements x
+    where x.link_id = v_link.id and x.period = p_period and x.kind = p_kind
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'busy');
   end if;
 
   insert into rp.statements as s (link_id, period, kind, payload, last_due_on)

@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  addDays,
   buildCatchupPayload,
   computeCatchup,
   formatLongDate,
@@ -160,7 +161,16 @@ export function CatchupTab() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="catchup-end">Caught up by</Label>
-            <Input id="catchup-end" type="date" className="tabular h-10" min={record.start} value={record.end} onChange={setDate("end")} />
+            <Input
+              id="catchup-end"
+              type="date"
+              className="tabular h-10"
+              min={record.start}
+              // Share links only hold schedules that finish within a year of the move-in month.
+              max={addDays(`${periodOf(record.moveIn)}-01`, 365)}
+              value={record.end}
+              onChange={setDate("end")}
+            />
           </div>
         </div>
 

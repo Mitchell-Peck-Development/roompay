@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { createPgliteBackend } from "@/lib/server/rp/pglite"
-import { h, payload } from "./helpers"
+import { h, monthFromNow, payload } from "./helpers"
 
 // These run the real migration in supabase/migrations against an in-process
 // Postgres, so the SQL the owner applies is the SQL under test.
@@ -25,16 +25,20 @@ type ViewResult = {
   }[]
 }
 
+// Periods are checked against today, so the fixtures are relative to it.
+const THIS = monthFromNow(0)
+const NEXT = monthFromNow(1)
+
 const pub = (overrides: Record<string, unknown> = {}) =>
   rp.call<{ revision: number; expires_at: string }>("publish", {
     p_token_hash: h(1),
     p_write_key_hash: h(2),
     p_household_label: "Unit 3012",
     p_roommate_label: "Biscuit",
-    p_period: "2026-10",
+    p_period: THIS,
     p_kind: "monthly",
     p_payload: payload(),
-    p_last_due_on: "2026-10-22",
+    p_last_due_on: `${THIS}-22`,
     ...overrides,
   })
 
@@ -81,6 +85,11 @@ describe("rp.publish", () => {
     ["p_payload", { plans: [{ name: "no key" }] }],
     ["p_household_label", "x".repeat(81)],
     ["p_roommate_label", "x".repeat(81)],
+    // Nothing can be kept alive indefinitely: months and due dates stay near today.
+    ["p_period", monthFromNow(-25)],
+    ["p_period", monthFromNow(25)],
+    ["p_last_due_on", "2099-12-31"],
+    ["p_last_due_on", "2000-01-01"],
   ])("rejects bad %s (%j)", async (key, value) =>
     expect(await pub({ [key]: value })).toEqual({ ok: false, error: "invalid" })
   )
@@ -91,12 +100,15 @@ describe("rp.publish", () => {
     ).toEqual({ ok: false, error: "invalid" }))
 
   it("expires 60 days after the last due date", async () => {
-    const result = await pub({ p_last_due_on: "2030-01-31" })
-    expect(result.ok && result.expires_at).toContain("2030-04-01")
+    const period = monthFromNow(12)
+    const result = await pub({ p_period: period, p_last_due_on: `${period}-01` })
+    const expected = new Date(Date.parse(`${period}-01T00:00:00Z`) + 60 * 86_400_000)
+    expect(result.ok && result.expires_at).toContain(expected.toISOString().slice(0, 10))
   })
 
   it("never expires sooner than two weeks out, even for old months", async () => {
-    await pub({ p_period: "2020-01", p_last_due_on: "2020-01-22" })
+    const old = monthFromNow(-20)
+    await pub({ p_period: old, p_last_due_on: `${old}-22` })
     const { rows } = await rp.db.query<{ ok: boolean }>(
       "select expires_at > now() + interval '13 days' as ok from rp.links"
     )
@@ -105,15 +117,30 @@ describe("rp.publish", () => {
 
   it("keeps at most 40 statements per link, dropping the oldest", async () => {
     for (let i = 0; i < 42; i++) {
-      const year = 2010 + Math.floor(i / 12)
-      const month = String((i % 12) + 1).padStart(2, "0")
-      await pub({ p_period: `${year}-${month}` })
+      const period = monthFromNow(i - 24)
+      await pub({ p_period: period, p_last_due_on: `${period}-22` })
     }
     expect(await count("statements")).toBe(40)
     const { rows } = await rp.db.query<{ p: string }>(
       "select min(period) as p from rp.statements"
     )
-    expect(rows[0]!.p).toBe("2010-03")
+    expect(rows[0]!.p).toBe(monthFromNow(-22))
+  })
+
+  it("past the storage ceiling, accepts edits but nothing new", async () => {
+    await pub()
+    await rp.db.exec(
+      "create or replace function rp.storage_ceiling_bytes() returns bigint language sql stable set search_path = '' as $$ select 0::bigint $$"
+    )
+    try {
+      expect(await pub()).toMatchObject({ ok: true, revision: 2 })
+      expect(await pub({ p_period: NEXT, p_last_due_on: `${NEXT}-22` })).toEqual({ ok: false, error: "busy" })
+      expect(await pub({ p_token_hash: h(8) })).toEqual({ ok: false, error: "busy" })
+    } finally {
+      await rp.db.exec(
+        "create or replace function rp.storage_ceiling_bytes() returns bigint language sql stable set search_path = '' as $$ select 512::bigint * 1024 * 1024 $$"
+      )
+    }
   })
 
   it("trips the new-link circuit breaker but still serves existing links", async () => {
@@ -146,8 +173,8 @@ describe("rp.publish", () => {
 describe("rp.view / rp.pick", () => {
   it("returns labels and statements newest first", async () => {
     await pub()
-    await pub({ p_period: "2026-11", p_last_due_on: "2026-11-22" })
-    await pub({ p_period: "2026-11", p_kind: "catchup", p_last_due_on: "2026-11-22" })
+    await pub({ p_period: NEXT, p_last_due_on: `${NEXT}-22` })
+    await pub({ p_period: NEXT, p_kind: "catchup", p_last_due_on: `${NEXT}-22` })
     const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
     expect(v.link).toMatchObject({
@@ -158,9 +185,9 @@ describe("rp.view / rp.pick", () => {
     expect(v.link.id).toMatch(/^[0-9a-f-]{36}$/)
     expect(new Date(v.link.expires_at).getTime()).toBeGreaterThan(Date.now())
     expect(v.statements.map((s) => [s.period, s.kind])).toEqual([
-      ["2026-11", "monthly"],
-      ["2026-11", "catchup"],
-      ["2026-10", "monthly"],
+      [NEXT, "monthly"],
+      [NEXT, "catchup"],
+      [THIS, "monthly"],
     ])
     expect(v.statements[0]!.payload.plans).toHaveLength(2)
     expect(v.statements[0]).toMatchObject({ chosen_plan: null, revision: 1 })
@@ -175,14 +202,14 @@ describe("rp.view / rp.pick", () => {
     await rp.db.exec("update rp.links set expires_at = now() - interval '1 second'")
     expect(await rp.call("view", { p_token_hash: h(1) })).toEqual({ ok: false, error: "not_found" })
     expect(
-      await rp.call("pick", { p_token_hash: h(1), p_period: "2026-10", p_kind: "monthly", p_plan: "weekly" })
+      await rp.call("pick", { p_token_hash: h(1), p_period: THIS, p_kind: "monthly", p_plan: "weekly" })
     ).toEqual({ ok: false, error: "not_found" })
   })
 
   it("records a pick, makes it sticky, and drops it when that plan disappears", async () => {
     await pub()
     const pick = (plan: string) =>
-      rp.call("pick", { p_token_hash: h(1), p_period: "2026-10", p_kind: "monthly", p_plan: plan })
+      rp.call("pick", { p_token_hash: h(1), p_period: THIS, p_kind: "monthly", p_plan: plan })
 
     expect(await pick("weekly")).toMatchObject({ ok: true, chosen_plan: "weekly", revision: 2 })
     // Picking the same plan again changes nothing, so calendars aren't churned.
@@ -204,7 +231,7 @@ describe("rp.view / rp.pick", () => {
 
   it("keeps the pick when the owner republishes the same plans", async () => {
     await pub()
-    await rp.call("pick", { p_token_hash: h(1), p_period: "2026-10", p_kind: "monthly", p_plan: "weekly" })
+    await rp.call("pick", { p_token_hash: h(1), p_period: THIS, p_kind: "monthly", p_plan: "weekly" })
     await pub()
     const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
     if (!v.ok) throw new Error("expected ok")
@@ -215,7 +242,7 @@ describe("rp.view / rp.pick", () => {
 describe("rp.unpublish / rp.revoke", () => {
   it("need the write key", async () => {
     await pub()
-    const month = { p_period: "2026-10", p_kind: "monthly" }
+    const month = { p_period: THIS, p_kind: "monthly" }
     expect(
       await rp.call("unpublish", { p_token_hash: h(1), p_write_key_hash: h(3), ...month })
     ).toEqual({ ok: false, error: "forbidden" })

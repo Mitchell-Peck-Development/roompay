@@ -21,3 +21,10 @@ export const payload = (plans: string[] = ["full", "weekly"]) => ({
   })),
   defaultPlan: plans[0],
 })
+
+/** "YYYY-MM" for the month `offset` months from now (the SQL checks against now). */
+export function monthFromNow(offset: number): string {
+  const now = new Date()
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1))
+  return d.toISOString().slice(0, 7)
+}

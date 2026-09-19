@@ -12,6 +12,12 @@ export const shareMetadata: Metadata = {
   referrer: "no-referrer",
 }
 
+/**
+ * `view` is null when the link doesn't exist (or has expired). Any other
+ * failure — no database configured, or one that can't be reached — throws,
+ * and the segment's error boundary shows a "try again" page instead of
+ * wrongly telling the roommate their link has ended.
+ */
 export async function loadLink(token: string): Promise<{ view: LinkView | null; origin: string }> {
   const origin = originFromHeaders(await headers())
   if (!TOKEN_RE.test(token)) return { view: null, origin }

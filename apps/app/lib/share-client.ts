@@ -62,7 +62,7 @@ export function shareErrorMessage(error: ShareError): string {
     case "network":
       return "Couldn't reach the server. Nothing was lost — try again when you're online."
     case "invalid":
-      return "Something in this month couldn't be published. Check the amounts and try again."
+      return "This couldn't be published. Check the amounts and dates — links hold months within two years of today, with payments due within about a year."
     default:
       return "Something went wrong on the server. Nothing was lost — try again."
   }

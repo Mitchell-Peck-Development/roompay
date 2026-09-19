@@ -1,11 +1,14 @@
 import {
+  addDays,
   buildMonthlyPayload,
   createInitialData,
+  lastDueOn,
   newMonth,
   randomToken,
 } from "@workspace/core"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { resetBackendForTests } from "@/lib/server/rp/backend"
+import { monthFromNow } from "./helpers"
 
 process.env.RP_BACKEND = "pglite"
 process.env.RP_PGLITE_DIR = "memory://"
@@ -37,11 +40,14 @@ async function calendar(token: string, query = "") {
   })
 }
 
+// The database only accepts months near today.
+const PERIOD = monthFromNow(1)
+
 function octoberPayload() {
-  const now = new Date(2026, 8, 18)
+  const now = new Date()
   const data = createInitialData(now)
   data.people.push({ id: "a", nickname: "Biscuit" })
-  const month = newMonth(data, "2026-10", now)
+  const month = newMonth(data, PERIOD, now)
   const amounts = [164800, 600, 2000, 3800, 3800, 16000]
   month.lines.forEach((line, i) => (line.amountCents = amounts[i]!))
   return buildMonthlyPayload({
@@ -67,7 +73,7 @@ describe("share API", () => {
     const first = await post("publish", { ...base, payload })
     expect(first.status).toBe(200)
     expect(first.body).toMatchObject({ ok: true, revision: 1 })
-    expect(new Date(first.body.expiresAt).toISOString().slice(0, 10)).toBe("2026-12-21")
+    expect(new Date(first.body.expiresAt).toISOString().slice(0, 10)).toBe(addDays(lastDueOn(payload), 60))
 
     const second = await post("publish", { ...base, payload })
     expect(second.body).toMatchObject({ ok: true, revision: 2 })
@@ -100,7 +106,7 @@ describe("share API", () => {
     expect(body.links[token]).toMatchObject({
       ok: true,
       preferredPlan: null,
-      statements: [{ period: "2026-10", kind: "monthly", chosenPlan: null, revision: 2 }],
+      statements: [{ period: PERIOD, kind: "monthly", chosenPlan: null, revision: 2 }],
     })
     expect(JSON.stringify(body)).not.toContain(writeKey)
 
@@ -109,7 +115,7 @@ describe("share API", () => {
   })
 
   it("records the roommate's pick", async () => {
-    const pick = { token, period: "2026-10", kind: "monthly" }
+    const pick = { token, period: PERIOD, kind: "monthly" }
     expect(await post("pick", { ...pick, plan: "weekly" })).toEqual({
       status: 200,
       body: { ok: true, chosenPlan: "weekly", revision: 3 },
@@ -131,13 +137,13 @@ describe("share API", () => {
     expect(text.match(/BEGIN:VEVENT/g)).toHaveLength(4)
     expect(text).toContain("SUMMARY:Pay $238.75 · Unit 3012")
     expect(text).toContain("X-WR-CALNAME:RoomPay · Unit 3012")
-    expect(text).toContain("http://test.local/r/" + token + "/2026-10")
+    expect(text).toContain(`http://test.local/r/${token}/${PERIOD}`)
     expect(text).not.toContain(writeKey)
 
-    const oneOff = await calendar(token, "?period=2026-10&plan=half")
+    const oneOff = await calendar(token, `?period=${PERIOD}&plan=half`)
     expect((await oneOff.text()).match(/BEGIN:VEVENT/g)).toHaveLength(2)
 
-    expect((await calendar(token, "?period=2026-11")).status).toBe(404)
+    expect((await calendar(token, `?period=${monthFromNow(2)}`)).status).toBe(404)
     expect((await calendar(token, "?period=garbage")).status).toBe(404)
   })
 
@@ -150,7 +156,7 @@ describe("share API", () => {
   })
 
   it("unpublishes and revokes with the write key only", async () => {
-    const month = { token, period: "2026-10", kind: "monthly" }
+    const month = { token, period: PERIOD, kind: "monthly" }
     expect((await post("unpublish", { ...month, writeKey: randomToken() })).status).toBe(403)
     expect((await post("revoke", { token, writeKey: randomToken() })).status).toBe(403)
 
@@ -160,5 +166,18 @@ describe("share API", () => {
     expect((await post("revoke", { token, writeKey })).status).toBe(200)
     expect((await post("status", { tokens: [token] })).body.links[token]).toEqual({ ok: false })
     expect((await post("revoke", { token, writeKey })).status).toBe(404)
+  })
+})
+
+describe("when the database is unavailable", () => {
+  it("the feed answers 503 instead of an empty calendar", async () => {
+    const service = await import("@/lib/server/rp/service")
+    const spy = vi.spyOn(service, "viewLink").mockRejectedValueOnce(new Error("connection refused"))
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    const response = await calendar(randomToken())
+    expect(response.status).toBe(503)
+    expect(response.headers.get("retry-after")).toBe("600")
+    spy.mockRestore()
+    errors.mockRestore()
   })
 })
