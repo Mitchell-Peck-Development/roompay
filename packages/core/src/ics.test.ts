@@ -5,7 +5,7 @@ const stamp = new Date(Date.UTC(2026, 8, 18, 12, 0, 0))
 
 describe("ics", () => {
   it("escapes text", () =>
-    expect(escapeText("a,b;c\\d\ne")).toBe("a\\,b\;c\\\\d\\ne"))
+    expect(escapeText("a,b;c\\d\ne")).toBe("a\\,b\\;c\\\\d\\ne"))
 
   it("folds at 75 octets without breaking characters", () => {
     const ascii = "X".repeat(200)
