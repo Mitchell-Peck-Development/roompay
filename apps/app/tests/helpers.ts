@@ -1,0 +1,23 @@
+import { createHash } from "node:crypto"
+
+/** A deterministic, well-formed SHA-256 hex string for test rows. */
+export const h = (n: number) =>
+  createHash("sha256").update(`test-${n}`).digest("hex")
+
+/** The smallest payload the rp functions will accept. */
+export const payload = (plans: string[] = ["full", "weekly"]) => ({
+  v: 1,
+  kind: "monthly",
+  period: "2026-10",
+  title: "October 2026",
+  currency: "USD",
+  lines: [{ label: "Rent", totalCents: 191000, shareCents: 95500 }],
+  totalCents: 191000,
+  shareCents: 95500,
+  plans: plans.map((key) => ({
+    key,
+    name: key,
+    payments: [{ date: "2026-10-01", amountCents: 95500, label: "Full amount" }],
+  })),
+  defaultPlan: plans[0],
+})
