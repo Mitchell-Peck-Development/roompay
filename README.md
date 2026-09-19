@@ -18,21 +18,27 @@ Plan: [`docs/superpowers/plans/2026-09-18-roompay.md`](docs/superpowers/plans/20
 ## Layout
 
 ```
-apps/app        the product (Next.js 16, App Router)                  → localhost:3001
-apps/web        the landing page (Next.js 16)                         → localhost:3000
+apps/app        everything served on one origin (Next.js 16, App Router)  → localhost:3001
+  /               the landing page
+  /app            the product
+  /r/<token>      a roommate's share link
 packages/core   all the money logic: splits, plans, catch-up, ICS, share payloads, backup (pure TS, tested)
-packages/ui     shadcn/ui components and the theme, shared by both apps
+packages/ui     shadcn/ui components and the theme
 supabase/migrations   the rp schema — applied by hand, see below
 e2e/            Playwright smoke tests
 ```
+
+One deployment, one origin. The landing page, the app and the share links are routes in the same
+Next app, so a share link is short (`roompay.example/r/abc…`) and the app needs no second domain.
 
 ## Develop
 
 ```sh
 pnpm install
-pnpm dev:app        # the app, with a built-in database — no Supabase needed
-pnpm dev:web        # the landing page
+pnpm dev:app        # everything, with a built-in database — no Supabase needed
 ```
+
+The landing page is at <http://localhost:3001>, the app itself at <http://localhost:3001/app>.
 
 With no `SUPABASE_URL` set, the app runs its share links on **PGlite**: an in-process Postgres that loads the
 real migrations from `supabase/migrations/`, persisted in `apps/app/.pglite/`. So local sharing exercises the same
@@ -84,9 +90,9 @@ publishing happens, and daily by `pg_cron` if that extension is installed.
 
 ## Deploy
 
-Two Vercel projects (or similar) from this repo, with root directories `apps/app` and `apps/web`.
+One Vercel project (or similar) from this repo, with root directory `apps/app`.
 
-- `apps/app`: `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
+- `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
   their own servers, so it must be reachable), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. A production server
   with no Supabase configured answers share requests with `503 sharing_unconfigured`; everything local still works.
 
@@ -97,19 +103,30 @@ Two Vercel projects (or similar) from this repo, with root directories `apps/app
   1. **The names don't match.** Supabase's own Vercel integration supplies `SUPABASE_ANON_KEY` and
      `NEXT_PUBLIC_SUPABASE_ANON_KEY` — never `SUPABASE_PUBLISHABLE_KEY`, which is what this app
      reads. Copy the publishable key across under that exact name.
-  2. **Set on the wrong project.** This repo deploys twice; the variables belong to the project
-     rooted at `apps/app`, not `apps/web`.
-  3. **Set on the wrong environment, or not redeployed.** Vercel only picks up new variables on the
+  2. **Set on the wrong environment, or not redeployed.** Vercel only picks up new variables on the
      next deployment, and Preview and Production are scoped separately.
-  4. **Local `next start`.** That runs with `NODE_ENV=production`, so it won't fall back to PGlite
+  3. **Local `next start`.** That runs with `NODE_ENV=production`, so it won't fall back to PGlite
      the way `pnpm dev:app` does — put both variables in `apps/app/.env.local` (the app directory,
      not the repo root) or run with `RP_BACKEND=pglite`.
 
   A 503 from `/r/<token>/calendar.ics` is a different thing: that one means the database was
   unreachable, and it's deliberate so subscribed calendars keep what they already have.
-- `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app, and `NEXT_PUBLIC_SITE_URL` — its own public
-  origin, which makes the generated Open Graph image and the sitemap absolute so shared links
-  preview correctly.
+
+`APP_URL` also makes the landing page's Open Graph image, its canonical URL and the sitemap
+absolute, so links preview correctly when shared.
+
+### The installed app lives at `/app`
+
+The web app manifest keeps `id: "/"` — that string is the installed app's identity, so changing it
+would read as a different app and install a second copy beside anyone's existing one — while
+`start_url` and `scope` are `/app`. Share links at `/r/…` sit outside that scope deliberately: they
+belong to the roommate and should open in a browser, not in the owner's installed app.
+
+The service worker still registers at `/`, because anyone who installed an earlier version already
+has a worker there, and re-registering updates it in place instead of orphaning it. Its cache
+version is bumped so the old one — which held the app shell under `/`, where the landing page is
+now — is dropped on activation. Local data is keyed to the origin, not the path, so nothing is
+lost by the move.
 
 ## Offset bills, residency and the Bills calendar
 

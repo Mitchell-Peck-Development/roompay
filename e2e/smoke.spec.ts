@@ -11,7 +11,7 @@ const BILL = {
 }
 
 async function setUp(page: Page, roommate = "Biscuit") {
-  await page.goto("/")
+  await page.goto("/app")
   await page.getByLabel("What should we call this place?").fill("Unit 3012")
   await page.getByLabel("A nickname for your roommate").fill(roommate)
   await page.getByRole("button", { name: "Start splitting" }).click()
@@ -119,7 +119,7 @@ test("a backup moves everything to another device", async ({ page, browser }, te
   await expect(page.getByText("Last backup: today.")).toBeVisible()
 
   const other = await newDevice(browser)
-  await other.goto("/")
+  await other.goto("/app")
   await other.locator('input[type="file"]').setInputFiles(file)
   await expect(other.getByText("This month's bill")).toBeVisible()
   await expect(other.getByTestId("share-3012-B")).toHaveText("$955.00")

@@ -1,5 +1,9 @@
+import Link from "next/link"
 import { Button } from "@workspace/ui/components/button"
 import { Mark, Wordmark } from "./mark"
+
+/** Where the app lives. The landing page is "/" on the same origin. */
+export const APP_PATH = "/app"
 
 const NAV = [
   { href: "#timing", label: "How the dates work" },
@@ -8,7 +12,7 @@ const NAV = [
   { href: "#faq", label: "FAQ" },
 ]
 
-export function SiteHeader({ appUrl }: { appUrl: string }) {
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-5">
@@ -28,14 +32,14 @@ export function SiteHeader({ appUrl }: { appUrl: string }) {
           ))}
         </nav>
         <Button asChild size="lg" className="h-9 px-4">
-          <a href={appUrl}>Open RoomPay</a>
+          <Link href={APP_PATH}>Open RoomPay</Link>
         </Button>
       </div>
     </header>
   )
 }
 
-export function SiteFooter({ appUrl }: { appUrl: string }) {
+export function SiteFooter() {
   return (
     <footer className="border-t py-10">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 sm:flex-row sm:items-start sm:justify-between">
@@ -47,9 +51,9 @@ export function SiteFooter({ appUrl }: { appUrl: string }) {
           </p>
         </div>
         <nav aria-label="Footer" className="flex flex-col gap-2 text-sm">
-          <a href={appUrl} className="text-muted-foreground hover:text-foreground">
+          <Link href={APP_PATH} className="text-muted-foreground hover:text-foreground">
             Open RoomPay
-          </a>
+          </Link>
           <a
             href="https://github.com/Mitchell-Peck-Development/roompay"
             className="text-muted-foreground hover:text-foreground"

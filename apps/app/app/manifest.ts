@@ -2,12 +2,19 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    // Unchanged on purpose: the id is the installed app's identity, so
+    // moving it from "/" to "/app" would look like a different app and
+    // install a second copy alongside anyone's existing one.
     id: "/",
     name: "RoomPay",
     short_name: "RoomPay",
     description: "Split rent and bills with roommates. No accounts — your numbers stay on your device.",
-    start_url: "/",
-    scope: "/",
+    // The landing page is "/" now; the app itself lives under "/app", and
+    // share links at "/r/..." are deliberately outside scope — they belong to
+    // the roommate, and should open in the browser rather than the owner's
+    // installed app.
+    start_url: "/app",
+    scope: "/app",
     display: "standalone",
     orientation: "portrait",
     background_color: "#f8f6f1",

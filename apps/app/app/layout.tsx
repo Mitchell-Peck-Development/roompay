@@ -11,6 +11,10 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display" })
 
 export const metadata: Metadata = {
+  // Read at build time for these static pages, which is fine: it only makes
+  // Open Graph and canonical URLs absolute. Share links and calendar feeds
+  // resolve their origin per request instead (lib/server/origin.ts).
+  metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3001"),
   title: { default: "RoomPay", template: "%s · RoomPay" },
   description:
     "Split rent and bills with roommates. No accounts — your numbers stay on your device.",

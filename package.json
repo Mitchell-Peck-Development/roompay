@@ -10,7 +10,6 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "dev:app": "pnpm --filter app dev",
-    "dev:web": "pnpm --filter web dev",
     "e2e": "playwright test"
   },
   "devDependencies": {
