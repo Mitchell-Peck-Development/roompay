@@ -19,7 +19,7 @@ Plan: [`docs/superpowers/plans/2026-09-18-roompay.md`](docs/superpowers/plans/20
 
 ```
 apps/app        the product (Next.js 16, App Router)                  → localhost:3001
-apps/web        marketing site — a placeholder landing page for now   → localhost:3000
+apps/web        the landing page (Next.js 16)                         → localhost:3000
 packages/core   all the money logic: splits, plans, catch-up, ICS, share payloads, backup (pure TS, tested)
 packages/ui     shadcn/ui components and the theme, shared by both apps
 supabase/migrations   the rp schema — applied by hand, see below
@@ -107,7 +107,9 @@ Two Vercel projects (or similar) from this repo, with root directories `apps/app
 
   A 503 from `/r/<token>/calendar.ics` is a different thing: that one means the database was
   unreachable, and it's deliberate so subscribed calendars keep what they already have.
-- `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app.
+- `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app, and `NEXT_PUBLIC_SITE_URL` — its own public
+  origin, which makes the generated Open Graph image and the sitemap absolute so shared links
+  preview correctly.
 
 ## Offset bills, residency and the Bills calendar
 
