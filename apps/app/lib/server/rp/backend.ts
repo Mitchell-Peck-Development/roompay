@@ -22,9 +22,9 @@ async function create(): Promise<RpBackend & { close?: () => Promise<void> }> {
 
   if (url && key && !forcePglite) return createSupabaseBackend(url, key)
 
-  // The in-process database is a development convenience only. NODE_ENV is
-  // inlined at build time, so this branch (and the PGlite import) is dropped
-  // from production bundles unless it was asked for explicitly.
+  // The in-process database is for development and tests. A production server
+  // only uses it when explicitly told to (RP_BACKEND=pglite, e.g. for the e2e
+  // run against `next start`); otherwise sharing reports itself unconfigured.
   if (process.env.NODE_ENV !== "production" || forcePglite) {
     const { createPgliteBackend } = await import("./pglite")
     return createPgliteBackend({

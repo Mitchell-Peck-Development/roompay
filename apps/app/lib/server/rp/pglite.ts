@@ -71,11 +71,12 @@ export async function createPgliteBackend(
 
   async function migrate() {
     await db.exec(SUPABASE_ROLES)
-    const files = (await readdir(migrationsDir))
+    // Dev/test only: keep the build from tracing the whole repo through these reads.
+    const files = (await readdir(/*turbopackIgnore: true*/ migrationsDir))
       .filter((f) => f.endsWith(".sql"))
       .sort()
     for (const file of files) {
-      await db.exec(await readFile(path.join(migrationsDir, file), "utf8"))
+      await db.exec(await readFile(path.join(/*turbopackIgnore: true*/ migrationsDir, file), "utf8"))
     }
   }
 

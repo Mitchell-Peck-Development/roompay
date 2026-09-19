@@ -1,0 +1,193 @@
+"use client"
+
+import {
+  type ComputedLine,
+  type LineMeter,
+  meterDetail,
+  meterUsage,
+  parseDecimal,
+} from "@workspace/core"
+import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
+import { X } from "lucide-react"
+import { Amount } from "@/components/common/amount"
+import { MoneyInput } from "@/components/common/money-input"
+import { actions } from "@/lib/actions"
+import { currencySymbol } from "@/lib/format"
+import { useData } from "@/lib/store"
+import { LineSplitPopover } from "./line-split-popover"
+
+type PersonRef = { personId: string; nickname: string }
+
+const KIND_HINT = {
+  fixed: "usually fixed",
+  variable: "from the statement",
+  metered: "metered",
+} as const
+
+export function LineRow({ computed, people }: { computed: ComputedLine; people: PersonRef[] }) {
+  const { line } = computed
+  const inputId = `line-${line.id}`
+
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 pt-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Label htmlFor={inputId} className="text-sm font-medium">
+              {line.label || "Untitled"}
+            </Label>
+            {line.oneOff ? (
+              <Badge variant="secondary">{(line.amountCents ?? 0) < 0 ? "credit" : "one-time"}</Badge>
+            ) : (
+              <span className="text-xs text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
+            )}
+          </div>
+          {people.length > 0 && (
+            <LineSplitPopover
+              lineId={line.id}
+              split={line.split}
+              people={people}
+              onChange={(split) => actions.setLineSplit(line.id, split)}
+            />
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {line.kind === "metered" && line.meter ? (
+            <div className="pt-1 text-right">
+              {computed.entered ? (
+                <Amount cents={computed.amountCents} className="text-base font-semibold" />
+              ) : (
+                <span className="text-sm text-muted-foreground">enter usage</span>
+              )}
+            </div>
+          ) : (
+            <MoneyInput
+              id={inputId}
+              className="w-32"
+              value={line.amountCents}
+              allowNegative={line.oneOff}
+              onCommit={(cents) => actions.setLineAmount(line.id, cents)}
+            />
+          )}
+          {line.oneOff && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove ${line.label}`}
+              onClick={() => actions.removeLine(line.id)}
+            >
+              <X />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {line.kind === "metered" && line.meter && (
+        <MeterFields lineId={line.id} inputId={inputId} meter={line.meter} />
+      )}
+    </div>
+  )
+}
+
+function MeterFields({
+  lineId,
+  inputId,
+  meter,
+}: {
+  lineId: string
+  inputId: string
+  meter: LineMeter
+}) {
+  const currency = useData().household.currency
+  const set = (patch: Partial<LineMeter>) => actions.setLineMeter(lineId, patch)
+  const unit = meter.unit || "unit"
+  const usage = meterUsage(meter)
+  const backwards =
+    meter.input === "readings" &&
+    parseDecimal(meter.prev ?? "") !== null &&
+    parseDecimal(meter.curr ?? "") !== null &&
+    usage === null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-muted/60 p-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {meter.input === "usage" ? (
+          <DecimalField
+            id={inputId}
+            label={`Used (${unit})`}
+            value={meter.usage ?? ""}
+            onChange={(usage) => set({ usage })}
+            className="col-span-2"
+          />
+        ) : (
+          <>
+            <DecimalField label="Previous reading" value={meter.prev ?? ""} onChange={(prev) => set({ prev })} />
+            <DecimalField
+              id={inputId}
+              label="Current reading"
+              value={meter.curr ?? ""}
+              invalid={backwards}
+              onChange={(curr) => set({ curr })}
+            />
+          </>
+        )}
+        <DecimalField
+          label={`Rate (${currencySymbol(currency)} per ${unit})`}
+          value={meter.rate}
+          onChange={(rate) => set({ rate })}
+        />
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground" htmlFor={`${inputId}-base`}>
+            Base fee
+          </Label>
+          <MoneyInput
+            id={`${inputId}-base`}
+            value={meter.baseFeeCents === 0 ? null : meter.baseFeeCents}
+            onCommit={(cents) => set({ baseFeeCents: cents ?? 0 })}
+          />
+        </div>
+      </div>
+      <p className="tabular text-xs text-muted-foreground">
+        {backwards
+          ? "The current reading is lower than the previous one."
+          : (meterDetail(meter, currency) ?? "Usage × rate, plus any base fee.")}
+      </p>
+    </div>
+  )
+}
+
+function DecimalField({
+  id,
+  label,
+  value,
+  onChange,
+  invalid,
+  className,
+}: {
+  id?: string
+  label: string
+  value: string
+  onChange(value: string): void
+  invalid?: boolean
+  className?: string
+}) {
+  const bad = invalid || (value.trim() !== "" && parseDecimal(value) === null)
+  return (
+    <label className={`flex flex-col gap-1 ${className ?? ""}`}>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Input
+        id={id}
+        inputMode="decimal"
+        autoComplete="off"
+        className="tabular h-10 text-right"
+        value={value}
+        aria-invalid={bad || undefined}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  )
+}

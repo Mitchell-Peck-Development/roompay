@@ -3,14 +3,20 @@
  * fetch feeds from their own servers, so this must be the externally
  * reachable address — set NEXT_PUBLIC_APP_URL in production.
  */
-export function appOrigin(request: Request): string {
+export function originFromHeaders(headers: Headers, fallback?: string): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "")
   if (configured) return configured
 
-  const forwardedHost = request.headers.get("x-forwarded-host")
-  if (forwardedHost) {
-    const proto = request.headers.get("x-forwarded-proto") ?? "https"
-    return `${proto.split(",")[0]!.trim()}://${forwardedHost.split(",")[0]!.trim()}`
+  const host = headers.get("x-forwarded-host") ?? headers.get("host")
+  if (host) {
+    const proto =
+      headers.get("x-forwarded-proto") ??
+      (fallback ? new URL(fallback).protocol.replace(":", "") : "https")
+    return `${proto.split(",")[0]!.trim()}://${host.split(",")[0]!.trim()}`
   }
-  return new URL(request.url).origin
+  return fallback ? new URL(fallback).origin : "http://localhost:3001"
+}
+
+export function appOrigin(request: Request): string {
+  return originFromHeaders(request.headers, request.url)
 }
