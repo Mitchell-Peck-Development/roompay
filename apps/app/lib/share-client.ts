@@ -12,7 +12,10 @@ export type ShareError =
   | "server"
   | "network"
 
-type Result<T> = ({ ok: true } & T) | { ok: false; error: ShareError }
+type Result<T> =
+  | ({ ok: true } & T)
+  /** `missing` names the unset environment variables on a 503. */
+  | { ok: false; error: ShareError; missing?: string[] }
 
 async function post<T>(path: string, body: unknown): Promise<Result<T>> {
   try {
@@ -57,7 +60,7 @@ export const shareClient = {
     post<{ chosenPlan: string; revision: number }>("pick", body),
 }
 
-export function shareErrorMessage(error: ShareError): string {
+export function shareErrorMessage(error: ShareError, missing?: string[]): string {
   switch (error) {
     case "forbidden":
       return "This link was created with different keys, so this device can't change it. Create a new link instead."
@@ -66,7 +69,11 @@ export function shareErrorMessage(error: ShareError): string {
     case "busy":
       return "Sharing is busy right now. Give it a minute and try again."
     case "sharing_unconfigured":
-      return "Sharing isn't set up on this server yet."
+      return missing?.length
+        ? `Sharing isn't set up on this server: ${missing.join(" and ")} ${
+            missing.length === 1 ? "is" : "are"
+          } unset. The names must match exactly, and Vercel only picks up new variables on the next deploy.`
+        : "Sharing isn't set up on this server yet."
     case "network":
       return "Couldn't reach the server. Nothing was lost — try again when you're online."
     case "invalid":

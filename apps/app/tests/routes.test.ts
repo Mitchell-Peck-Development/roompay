@@ -202,3 +202,33 @@ describe("when the database is unavailable", () => {
     errors.mockRestore()
   })
 })
+
+describe("when sharing isn't configured", () => {
+  it("names the variables that are unset, so a 503 is diagnosable", async () => {
+    // What a production deploy looks like with the wrong variable names: the
+    // Supabase Vercel integration sets SUPABASE_ANON_KEY, which isn't read.
+    const env = { ...process.env }
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    await resetBackendForTests()
+    delete process.env.RP_BACKEND
+    delete process.env.SUPABASE_PUBLISHABLE_KEY
+    process.env.SUPABASE_URL = "https://example.supabase.co"
+    vi.stubEnv("NODE_ENV", "production")
+
+    const response = await post("status", { tokens: [randomToken()] })
+    expect(response).toEqual({
+      status: 503,
+      body: {
+        ok: false,
+        error: "sharing_unconfigured",
+        missing: ["SUPABASE_PUBLISHABLE_KEY"],
+      },
+    })
+    expect(errors.mock.calls[0]?.[1]).toMatch(/SUPABASE_PUBLISHABLE_KEY is unset/)
+
+    vi.unstubAllEnvs()
+    process.env = env
+    errors.mockRestore()
+    await resetBackendForTests()
+  })
+})

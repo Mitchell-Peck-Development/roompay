@@ -42,7 +42,13 @@ export async function handle<T>(
     return await run(parsed.data)
   } catch (error) {
     if (error instanceof SharingUnconfiguredError) {
-      return json({ ok: false, error: "sharing_unconfigured" }, 503)
+      // Names, never values — this is the one thing that makes a 503 here
+      // diagnosable from a deploy log instead of a guess.
+      console.error("[share]", error.message)
+      return json(
+        { ok: false, error: "sharing_unconfigured", missing: error.missing },
+        503
+      )
     }
     console.error("[share]", error)
     return json({ ok: false, error: "server" }, 500)

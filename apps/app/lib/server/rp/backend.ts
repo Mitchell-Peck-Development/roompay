@@ -4,9 +4,19 @@ import type { RpBackend } from "./types"
 
 /** Thrown when a production server has no database configured. */
 export class SharingUnconfiguredError extends Error {
-  constructor() {
-    super("Sharing is not configured: set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.")
+  /** The variables that aren't set — names only, never values. */
+  readonly missing: string[]
+
+  constructor(missing: string[]) {
+    super(
+      `Sharing is not configured: ${missing.join(" and ")} ${
+        missing.length === 1 ? "is" : "are"
+      } unset on this server. The names have to match exactly — Supabase's own ` +
+        "Vercel integration supplies SUPABASE_ANON_KEY, which this app doesn't read; " +
+        "copy the publishable key into SUPABASE_PUBLISHABLE_KEY and redeploy."
+    )
     this.name = "SharingUnconfiguredError"
+    this.missing = missing
   }
 }
 
@@ -32,7 +42,16 @@ async function create(): Promise<RpBackend & { close?: () => Promise<void> }> {
     })
   }
 
-  throw new SharingUnconfiguredError()
+  throw new SharingUnconfiguredError(
+    (
+      [
+        ["SUPABASE_URL", url],
+        ["SUPABASE_PUBLISHABLE_KEY", key],
+      ] as const
+    )
+      .filter(([, value]) => !value)
+      .map(([name]) => name)
+  )
 }
 
 export function getBackend(): Promise<RpBackend> {
