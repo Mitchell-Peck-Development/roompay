@@ -119,6 +119,9 @@ function orderCurrentLines(draft: AppData) {
  */
 export function upsertItem(draft: AppData, item: ItemTemplate) {
   const index = draft.items.findIndex((t) => t.id === item.id)
+  // What the item said before this edit, to tell a line the template still
+  // drives from one a person set by hand for this month alone.
+  const previous = index === -1 ? undefined : draft.items[index]
   if (index === -1) draft.items.push(item)
   else draft.items[index] = item
 
@@ -138,10 +141,26 @@ export function upsertItem(draft: AppData, item: ItemTemplate) {
 
   line.label = item.label
   line.split = structuredClone(item.split)
-  line.covers = coverageWindow(draft.current.period, item.coverage)
-  const dueDate = dueDateFor(draft.current.period, normalizeDue(item))
-  if (dueDate) line.dueDate = dueDate
-  else delete line.dueDate
+
+  // A period or due date this month's bill was given by hand outlives edits
+  // to the item — renaming the sewer bill shouldn't undo the quarter it
+  // covers. Anything still matching the old template follows the new one.
+  const period = draft.current.period
+  const wasTemplate = (value: ServiceWindow | undefined) => {
+    if (!value) return true
+    const before = coverageWindow(period, previous?.coverage)
+    return value.start === before.start && value.end === before.end
+  }
+  if (wasTemplate(line.covers)) {
+    line.covers = coverageWindow(period, item.coverage)
+  }
+
+  const dueBefore = previous ? dueDateFor(period, normalizeDue(previous)) : undefined
+  if (line.dueDate === dueBefore) {
+    const dueDate = dueDateFor(period, normalizeDue(item))
+    if (dueDate) line.dueDate = dueDate
+    else delete line.dueDate
+  }
   if (line.kind !== item.kind) {
     const fresh = lineFromTemplate(item, draft.current.period)
     line.kind = fresh.kind
