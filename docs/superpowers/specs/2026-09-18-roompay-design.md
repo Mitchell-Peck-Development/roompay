@@ -376,3 +376,21 @@ Owner request: calendar entries show a status that updates daily. Decided with t
 - The roommate's page shows the same statuses on their chosen plan, and "received so far".
 - `APP_URL` (runtime, server-only) replaces `NEXT_PUBLIC_APP_URL` for `apps/app` — Next inlines `NEXT_PUBLIC_*`
   at build time, even in server code (§8).
+
+## Addendum (2026-09-20): CSV export of history
+
+Owner request: export history as CSV. Decided with the owner: **one row per line item**, plus a `Total` row per
+month, received totals, shared-on dates, and move-in catch-ups included.
+
+- `historyCsv(data, { catchups })` in `packages/core/src/csv.ts`; button on the History tab.
+- Columns: `Month, Statement, Row, Item, Type, Detail, Currency, Bill, You,` then per person
+  `<name>, <name> received, <name> shared on`. `Row` is `Item` | `Total`, or `Item` | `Prorated` | `Next month` |
+  `Total` for a catch-up (whose item rows are a full month's estimates, type `estimate`).
+- Months oldest first; a line never filled in leaves its cells blank rather than `0.00`; amounts are plain
+  numbers (no currency symbol or thousands separators) so a sheet can sum them.
+- RFC 4180 quoting, CRLF, UTF-8 BOM (Excel). Cells starting `= + @` get a leading apostrophe so a spreadsheet
+  can't run them as formulas.
+- Export only — the CSV is a report, not an importable backup (§3.7's JSON backup remains the way to move data).
+- Merged with the coverage work that landed alongside it: each line row also carries `Covers from`, `Covers to`
+  and `Due` (ISO dates), and a catch-up's item rows carry what's owed for that item across the whole catch-up,
+  so they sum to its `Total`.

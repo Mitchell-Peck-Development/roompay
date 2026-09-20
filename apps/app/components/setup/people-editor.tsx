@@ -24,7 +24,7 @@ export function PeopleEditor() {
   return (
     <SectionCard
       title="Roommates"
-      description="Nicknames only — a pet name, a room, an initial. They appear on the share link and nowhere else."
+      description="Nicknames suggested — a pet name, a room, an initial. They appear on the share link and nowhere else."
     >
       <ul className="flex flex-col gap-2">
         {data.people.map((person) => (
