@@ -85,7 +85,7 @@ export function StatementView({
               <thead>
                 <tr className="border-b">
                   <th className="eyebrow px-5 py-2 text-left font-normal">
-                    {payload.kind === "catchup" ? "A full month" : "Bill"}
+                    {payload.kind === "catchup" ? "Bills so far" : "Bill"}
                   </th>
                   <th className="eyebrow py-2 text-right font-normal">Total</th>
                   <th className="eyebrow px-5 py-2 text-right font-normal">Yours</th>
@@ -96,7 +96,19 @@ export function StatementView({
                   <tr key={`${line.label}-${i}`} className="border-b border-dashed last:border-0">
                     <td className="px-5 py-2.5 align-top">
                       {line.label}
+                      {line.covers && (
+                        <span className="block text-xs text-muted-foreground">
+                          covers {line.covers}
+                        </span>
+                      )}
                       {line.detail && <span className="tabular block text-xs text-muted-foreground">{line.detail}</span>}
+                      {line.prorated && (
+                        <span className="block text-xs text-muted-foreground">
+                          {line.prorated.days === 0
+                            ? "none of it yours — before you moved in"
+                            : `your ${line.prorated.days} of ${line.prorated.of} days`}
+                        </span>
+                      )}
                     </td>
                     <td className="tabular py-2.5 text-right align-top text-muted-foreground">{money(line.totalCents)}</td>
                     <td className="tabular px-5 py-2.5 text-right align-top font-medium">{money(line.shareCents)}</td>

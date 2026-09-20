@@ -2,8 +2,9 @@
 
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
-import { CalendarRange, History, ReceiptText, Settings2 } from "lucide-react"
+import { CalendarDays, CalendarRange, History, ReceiptText, Settings2 } from "lucide-react"
 import * as React from "react"
+import { BillsTab } from "@/components/bills/bills-tab"
 import { CatchupTab } from "@/components/catchup/catchup-tab"
 import { HistoryTab } from "@/components/history/history-tab"
 import { MonthTab } from "@/components/month/month-tab"
@@ -13,6 +14,7 @@ import { FirstRun } from "./first-run"
 import { InstallNudge } from "./install-nudge"
 
 const TABS = [
+  { id: "bills", label: "Bills", icon: CalendarDays },
   { id: "month", label: "Month", icon: ReceiptText },
   { id: "catchup", label: "Catch-up", icon: CalendarRange },
   { id: "history", label: "History", icon: History },
@@ -82,6 +84,7 @@ export function AppShell() {
       <InstallNudge />
 
       <main className="flex flex-col gap-4">
+        {tab === "bills" && <BillsTab />}
         {tab === "month" && <MonthTab />}
         {tab === "catchup" && <CatchupTab />}
         {tab === "history" && <HistoryTab onOpen={() => setTab("month")} />}
@@ -97,7 +100,7 @@ export function AppShell() {
         aria-label="Sections"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
-        <div className="mx-auto grid max-w-2xl grid-cols-4">
+        <div className="mx-auto grid max-w-2xl grid-cols-5">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}

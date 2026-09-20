@@ -1,12 +1,17 @@
 "use client"
 
 import {
+  type CatchupResult,
   addDays,
   buildCatchupPayload,
   computeCatchup,
   formatLongDate,
+  formatPeriod,
+  formatWindow,
   isISODate,
+  isOffset,
   itemsWithRecentDefaults,
+  maxOffsetMonths,
   periodOf,
   todayISO,
 } from "@workspace/core"
@@ -14,7 +19,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
-import { Minus, Plus } from "lucide-react"
+import { History, Minus, Plus } from "lucide-react"
 import * as React from "react"
 import { Amount } from "@/components/common/amount"
 import { MoneyInput } from "@/components/common/money-input"
@@ -59,6 +64,7 @@ export function CatchupTab() {
   if (!record || !result) return null
 
   const who = person.nickname || "your roommate"
+  const offsetMonths = maxOffsetMonths(items)
   const patch = (next: Parameters<typeof actions.patchCatchup>[1]) => actions.patchCatchup(person.personId, next)
   const setDate = (key: "moveIn" | "start" | "end") => (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isISODate(e.target.value)) patch({ [key]: e.target.value })
@@ -74,7 +80,7 @@ export function CatchupTab() {
 
       <SectionCard
         title="Move-in stub period"
-        description="Prorates the partial first month by days occupied, then adds the following full month — so you can quote one smoothed plan instead of a small charge now and a big one right after."
+        description="Bills each item against the service it pays for, not the month it lands in — so a utility billed in arrears skips the first statement — then smooths the lot into one plan instead of a small charge now and a big one right after."
       >
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
@@ -103,9 +109,18 @@ export function CatchupTab() {
             .filter((item) => item.enabled)
             .map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-2">
-                <Label htmlFor={`estimate-${item.id}`} className="text-sm font-medium">
-                  {item.label}
-                  {item.kind !== "fixed" && <span className="ml-2 text-xs font-normal text-muted-foreground italic">est.</span>}
+                <Label htmlFor={`estimate-${item.id}`} className="flex flex-col items-start gap-0.5 text-sm font-medium">
+                  <span>
+                    {item.label}
+                    {item.kind !== "fixed" && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground italic">est.</span>
+                    )}
+                  </span>
+                  {isOffset(item.coverage) && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      billed in arrears
+                    </span>
+                  )}
                 </Label>
                 <MoneyInput
                   id={`estimate-${item.id}`}
@@ -134,12 +149,12 @@ export function CatchupTab() {
           />
         </div>
 
-        <dl className="mt-5 overflow-hidden rounded-xl border text-sm">
+        <Statements result={result} who={who} />
+
+        <dl className="mt-3 overflow-hidden rounded-xl border text-sm">
           <div className="flex flex-col px-4 pt-1">
             <Row label="Full month total (for reference)" cents={result.fullMonthTotalCents} />
             <Row label={`${who}'s share of a full month`} cents={result.fullShareCents} />
-            <Row label={`Prorated for ${result.daysOccupied} of ${result.daysInMonth} days`} cents={result.stubShareCents} />
-            {record.includeNextMonth && <Row label="+ the next full month (est.)" cents={result.nextMonthShareCents} />}
           </div>
           <div className="flex items-baseline justify-between gap-4 bg-accent px-4 py-3 text-accent-foreground">
             <dt className="font-medium">Combined to catch up</dt>
@@ -148,6 +163,15 @@ export function CatchupTab() {
             </dd>
           </div>
         </dl>
+
+        {offsetMonths > 0 && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
+            <History className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            Some bills pay for service up to {offsetMonths === 1 ? "a month" : `${offsetMonths} months`}{" "}
+            earlier, so {who} isn&apos;t charged for the ones covering time before they arrived — and
+            their share of the ones that straddle the move-in is prorated by the days they were here.
+          </p>
+        )}
       </SectionCard>
 
       <SectionCard
@@ -234,6 +258,55 @@ export function CatchupTab() {
         paid={record.paid}
       />
     </>
+  )
+}
+
+/**
+ * The catch-up, statement by statement. This is where offsets become legible:
+ * the water bill that lands in the move-in month is for the month before it,
+ * so it shows up at zero, and reappears — prorated — on the next statement.
+ */
+function Statements({ result, who }: { result: CatchupResult; who: string }) {
+  return (
+    <div className="mt-5 flex flex-col gap-3">
+      {result.statements.map((statement, index) => (
+        <div key={statement.period} className="overflow-hidden rounded-xl border">
+          <div className="flex items-baseline justify-between gap-4 border-b bg-muted/50 px-4 py-2">
+            <h4 className="text-sm font-semibold">
+              {formatPeriod(statement.period)}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {index === 0 ? "first statement" : "next statement"}
+              </span>
+            </h4>
+            <Amount cents={statement.shareCents} className="font-semibold" />
+          </div>
+          <div className="flex flex-col px-4 py-1">
+            {statement.lines.map((line) => (
+              <div
+                key={line.templateId}
+                className="flex items-start justify-between gap-4 border-b border-dashed py-2 text-sm last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className={line.shareCents === 0 ? "text-muted-foreground" : ""}>{line.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    covers {formatWindow(line.covers)}
+                    {line.occupancy === 0
+                      ? ` — before ${who} moved in, so none of it theirs`
+                      : line.occupancy < 1
+                        ? ` — ${Math.round(line.occupancy * 100)}% of it theirs`
+                        : ""}
+                  </p>
+                </div>
+                <Amount
+                  cents={line.shareCents}
+                  className={line.shareCents === 0 ? "text-muted-foreground" : ""}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

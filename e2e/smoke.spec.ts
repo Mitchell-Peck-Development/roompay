@@ -12,7 +12,7 @@ const BILL = {
 }
 
 async function setUp(page: Page, roommate = "Biscuit") {
-  await page.goto("/")
+  await page.goto("/app")
   await page.getByLabel("What should we call this place?").fill("Unit 3012")
   await page.getByLabel("A nickname for your roommate").fill(roommate)
   await page.getByRole("button", { name: "Start splitting" }).click()
@@ -120,7 +120,7 @@ test("a backup moves everything to another device", async ({ page, browser }, te
   await expect(page.getByText("Last backup: today.")).toBeVisible()
 
   const other = await newDevice(browser)
-  await other.goto("/")
+  await other.goto("/app")
   await other.locator('input[type="file"]').setInputFiles(file)
   await expect(other.getByText("This month's bill")).toBeVisible()
   await expect(other.getByTestId("share-3012-B")).toHaveText("$955.00")
@@ -143,8 +143,12 @@ test("history exports as a spreadsheet", async ({ page }, testInfo) => {
   const csv = await readFile((await download.path())!, "utf8")
   const [header, ...rows] = csv.replace(/^\uFEFF/, "").trim().split("\r\n")
   expect(header).toBe(
-    "Month,Statement,Row,Item,Type,Detail,Currency,Bill,You,Biscuit,Biscuit received,Biscuit shared on"
+    "Month,Statement,Row,Item,Type,Detail,Covers from,Covers to,Due," +
+      "Currency,Bill,You,Biscuit,Biscuit received,Biscuit shared on"
   )
-  expect(rows.some((r) => r.includes(",Item,Rent,fixed,,USD,1648.00,824.00,824.00,,"))).toBe(true)
-  expect(rows.at(-1)).toContain(",Total,,,,USD,1910.00,955.00,955.00,0.00,")
+  const rent = rows.find((r) => r.includes(",Item,Rent,fixed,"))!
+  expect(rent).toContain("USD,1648.00,824.00,824.00,,")
+  // Rent covers the month it's billed in; the CSV carries the window.
+  expect(rent).toMatch(/,\d{4}-\d{2}-01,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-01,USD,/)
+  expect(rows.at(-1)).toContain(",Total,,,,,,,USD,1910.00,955.00,955.00,0.00,")
 })

@@ -93,7 +93,7 @@ export function ShareCard({
     void shareClient
       .received({ token: link.token, writeKey: link.writeKey, period, kind: statement.kind, receivedCents })
       .then((result) => {
-        if (!result.ok && result.error !== "network") toast.error(shareErrorMessage(result.error))
+        if (!result.ok && result.error !== "network") toast.error(shareErrorMessage(result.error, result.missing))
         return refresh()
       })
       .finally(() => {
@@ -121,7 +121,7 @@ export function ShareCard({
     })
     setBusy(false)
     if (!result.ok) {
-      toast.error(shareErrorMessage(result.error))
+      toast.error(shareErrorMessage(result.error, result.missing))
       return
     }
     actions.setPublished(statement, personId, { at: new Date().toISOString(), hash: payloadHash(payload) })
@@ -152,7 +152,7 @@ export function ShareCard({
       kind: statement.kind,
     })
     setBusy(false)
-    if (!result.ok && result.error !== "not_found") return void toast.error(shareErrorMessage(result.error))
+    if (!result.ok && result.error !== "not_found") return void toast.error(shareErrorMessage(result.error, result.missing))
     actions.setPublished(statement, personId, null)
     void refresh()
     toast.success("Removed from the link.")
@@ -164,7 +164,7 @@ export function ShareCard({
     const result = await shareClient.revoke({ token: link.token, writeKey: link.writeKey })
     setBusy(false)
     // If the server no longer knows the link, forgetting it locally is all that's left.
-    if (!result.ok && result.error !== "not_found") return void toast.error(shareErrorMessage(result.error))
+    if (!result.ok && result.error !== "not_found") return void toast.error(shareErrorMessage(result.error, result.missing))
     actions.forgetLink(personId)
     toast.success(`${who}'s link is gone, along with everything published to it.`)
   }

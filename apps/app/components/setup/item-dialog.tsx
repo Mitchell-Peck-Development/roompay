@@ -1,6 +1,15 @@
 "use client"
 
-import { type ItemTemplate, newId } from "@workspace/core"
+import {
+  type Coverage,
+  type ItemTemplate,
+  SAME_MONTH,
+  describeCoverage,
+  describeDue,
+  newId,
+  normalizeCoverage,
+  normalizeDue,
+} from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
@@ -13,6 +22,13 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { RadioGroup, RadioGroupItem } from "@workspace/ui/components/radio-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
 import * as React from "react"
 import { MoneyInput } from "@/components/common/money-input"
@@ -29,8 +45,31 @@ const KINDS: { kind: ItemTemplate["kind"]; label: string; hint: string }[] = [
 
 const UNITS = ["kWh", "therm", "CCF", "gal", "m³"]
 
+/** How far behind the service a bill arrives — the usual suspects. */
+const OFFSETS = [
+  { months: 0, label: "This month", hint: "Rent, fees — paid for the month it's billed in." },
+  { months: 1, label: "Last month", hint: "Most utilities: the bill that lands now is last month's usage." },
+  { months: 2, label: "2 months back", hint: "Slow municipal billing — water and sewer often run this far behind." },
+] as const
+
+/** When the money leaves, relative to the month the bill is billed in. */
+const DUE_MONTHS = [
+  { value: "none", label: "No due date" },
+  { value: "-1", label: "The month before" },
+  { value: "0", label: "The month it's billed" },
+  { value: "1", label: "The following month" },
+  { value: "2", label: "Two months after" },
+] as const
+
 export function blankItem(): ItemTemplate {
-  return { id: newId(), label: "", kind: "variable", enabled: true, split: { mode: "default" } }
+  return {
+    id: newId(),
+    label: "",
+    kind: "variable",
+    enabled: true,
+    split: { mode: "default" },
+    coverage: SAME_MONTH,
+  }
 }
 
 export function ItemDialog({
@@ -56,12 +95,18 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
   const isNew = !data.items.some((t) => t.id === initial.id)
   const people = data.people.filter((p) => !p.archived).map((p) => ({ personId: p.id, nickname: p.nickname }))
   const meter = draft.meter ?? { unit: "kWh", rate: "", baseFeeCents: 0, input: "usage" as const }
+  const coverage: Coverage = normalizeCoverage(draft.coverage)
+  const due = normalizeDue(draft)
   const patch = (next: Partial<ItemTemplate>) => setDraft((d) => ({ ...d, ...next }))
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!draft.label.trim()) return
-    const item: ItemTemplate = { ...draft, label: draft.label.trim() }
+    const item: ItemTemplate = { ...draft, label: draft.label.trim(), coverage }
+    // `due` supersedes the day-only form; never leave both on the record.
+    delete item.dueDay
+    if (due) item.due = due
+    else delete item.due
     if (item.kind === "metered") item.meter = meter
     else delete item.meter
     if (item.kind !== "fixed") delete item.defaultAmountCents
@@ -107,6 +152,129 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
             </div>
           ))}
         </RadioGroup>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border p-3">
+        <div className="flex flex-col gap-2">
+          <Label>What period does the bill cover?</Label>
+          <p className="text-xs text-muted-foreground">
+            Bills rarely pay for the month they arrive in. Getting this right is what keeps a
+            roommate off a bill for service from before they moved in.
+          </p>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={String(coverage.offsetMonths)}
+            onValueChange={(value) =>
+              value && patch({ coverage: { ...coverage, offsetMonths: Number(value) } })
+            }
+            className="w-full"
+          >
+            {OFFSETS.map((option) => (
+              <ToggleGroupItem
+                key={option.months}
+                value={String(option.months)}
+                className="h-9 flex-1 text-xs"
+              >
+                {option.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">
+            {OFFSETS.find((o) => o.months === coverage.offsetMonths)?.hint ??
+              describeCoverage(coverage)}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-span">Months of service per bill</Label>
+          <Input
+            id="item-span"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={12}
+            className="tabular h-10 w-24"
+            value={coverage.spanMonths}
+            onChange={(e) =>
+              patch({
+                coverage: normalizeCoverage({
+                  ...coverage,
+                  spanMonths: Number(e.target.value) || 1,
+                }),
+              })
+            }
+          />
+          <span className="text-xs text-muted-foreground">
+            {coverage.spanMonths > 1
+              ? "A quarterly or seasonal bill."
+              : "One month at a time."}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border p-3">
+        <div className="flex flex-col gap-1">
+          <Label>When is it due?</Label>
+          <p className="text-xs text-muted-foreground">
+            Separate from what it covers, and from when it turns up. A sewer bill can arrive in
+            September for August&apos;s service and not be due until 1 October.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-[1fr_auto] gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-due-month" className="text-xs text-muted-foreground">
+              Month
+            </Label>
+            <Select
+              value={due ? String(due.offsetMonths) : "none"}
+              onValueChange={(value) =>
+                patch({
+                  dueDay: undefined,
+                  due:
+                    value === "none"
+                      ? undefined
+                      : { offsetMonths: Number(value), day: due?.day ?? 1 },
+                })
+              }
+            >
+              <SelectTrigger id="item-due-month" className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DUE_MONTHS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-due-day" className="text-xs text-muted-foreground">
+              Day
+            </Label>
+            <Input
+              id="item-due-day"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={31}
+              placeholder="—"
+              disabled={!due}
+              className="tabular h-10 w-20"
+              value={due?.day ?? ""}
+              onChange={(e) => {
+                const day = Number(e.target.value)
+                if (day >= 1 && day <= 31) {
+                  patch({ dueDay: undefined, due: { offsetMonths: due?.offsetMonths ?? 0, day } })
+                }
+              }}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{describeDue(due)}</p>
       </div>
 
       {draft.kind === "fixed" && (

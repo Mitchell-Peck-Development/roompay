@@ -61,7 +61,7 @@ export function PlanPicker(props: Props) {
     if (result.ok) setState("saved")
     else {
       setState("error")
-      setError(shareErrorMessage(result.error))
+      setError(shareErrorMessage(result.error, result.missing))
     }
   }
 

@@ -1,6 +1,7 @@
 export * from "./backup"
 export * from "./calendar-links"
 export * from "./catchup"
+export * from "./coverage"
 export * from "./csv"
 export * from "./dates"
 export * from "./decimal"

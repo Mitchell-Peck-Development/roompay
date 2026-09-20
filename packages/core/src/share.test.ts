@@ -108,7 +108,17 @@ describe("buildCatchupPayload", () => {
       defaultPlan: "catchup",
       catchup: { moveIn: "2026-09-14", daysOccupied: 17, daysInMonth: 30, stubShareCents: 54117, nextMonthShareCents: 95500 },
     })
-    expect(p.lines).toEqual([{ label: "Rent", totalCents: 191000, shareCents: 95500 }])
+    // One row per statement: the prorated move-in month, then the full one.
+    expect(p.lines).toEqual([
+      {
+        label: "Rent",
+        totalCents: 191000,
+        shareCents: 54117,
+        covers: "September 2026",
+        prorated: { days: 17, of: 30 },
+      },
+      { label: "Rent", totalCents: 191000, shareCents: 95500, covers: "October 2026" },
+    ])
     expect(p.plans).toHaveLength(1)
     expect(sharePayloadSchema.safeParse(p).success).toBe(true)
   })

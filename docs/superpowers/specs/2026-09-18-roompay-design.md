@@ -391,3 +391,6 @@ month, received totals, shared-on dates, and move-in catch-ups included.
 - RFC 4180 quoting, CRLF, UTF-8 BOM (Excel). Cells starting `= + @` get a leading apostrophe so a spreadsheet
   can't run them as formulas.
 - Export only — the CSV is a report, not an importable backup (§3.7's JSON backup remains the way to move data).
+- Merged with the coverage work that landed alongside it: each line row also carries `Covers from`, `Covers to`
+  and `Due` (ISO dates), and a catch-up's item rows carry what's owed for that item across the whole catch-up,
+  so they sum to its `Total`.

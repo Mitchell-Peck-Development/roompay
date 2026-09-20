@@ -239,3 +239,91 @@ describe("recent amounts", () => {
     expect(filled.find((t) => t.label === "Power")!.defaultAmountCents).toBeUndefined()
   })
 })
+
+describe("residency and coverage", () => {
+  it("puts move-in and move-out on the working month's participants", () => {
+    M.setPersonResidency(data, biscuit, { from: "2026-09-16" })
+    expect(data.current.participants).toEqual([
+      { personId: biscuit, nickname: "Biscuit", from: "2026-09-16" },
+    ])
+    M.setPersonResidency(data, biscuit, { to: "2027-03-31" })
+    expect(data.people[0]!.to).toBe("2027-03-31")
+    M.setPersonResidency(data, biscuit, { from: null, to: null })
+    expect(data.current.participants).toEqual([{ personId: biscuit, nickname: "Biscuit" }])
+  })
+
+  it("never lets a move-out precede a move-in", () => {
+    M.setPersonResidency(data, biscuit, { from: "2026-09-16", to: "2026-09-01" })
+    expect(data.people[0]).toMatchObject({ from: "2026-09-16", to: "2026-09-16" })
+  })
+
+  it("keeps the catch-up's move-in and the person's residency in step", () => {
+    M.ensureCatchup(data, biscuit, "2026-09-01")
+    M.setPersonResidency(data, biscuit, { from: "2026-09-16" })
+    expect(data.catchups[biscuit]!.moveIn).toBe("2026-09-16")
+    M.patchCatchup(data, biscuit, { moveIn: "2026-09-20" }, now)
+    expect(data.people[0]!.from).toBe("2026-09-20")
+  })
+
+  it("gives every line the window its item covers", () => {
+    // Defaults bill utilities a month in arrears; rent covers its own month.
+    expect(line("Rent").covers).toEqual({ start: "2026-09-01", end: "2026-09-30" })
+    expect(line("Water").covers).toEqual({ start: "2026-08-01", end: "2026-08-31" })
+    expect(line("Rent").dueDate).toBe("2026-09-01")
+  })
+
+  it("carries an item's new coverage into the working month", () => {
+    M.upsertItem(data, { ...item("Water"), coverage: { offsetMonths: 2, spanMonths: 1 }, dueDay: 22 })
+    expect(line("Water").covers).toEqual({ start: "2026-07-01", end: "2026-07-31" })
+    expect(line("Water").dueDate).toBe("2026-09-22")
+  })
+
+  it("lets one month's line override what it covers", () => {
+    M.setLineCoverage(data, line("Sewer").id, { start: "2026-06-01", end: "2026-08-31" }, now)
+    expect(line("Sewer").covers).toEqual({ start: "2026-06-01", end: "2026-08-31" })
+    // A backwards window collapses rather than counting negative days.
+    M.setLineCoverage(data, line("Sewer").id, { start: "2026-08-01", end: "2026-07-01" }, now)
+    expect(line("Sewer").covers).toEqual({ start: "2026-08-01", end: "2026-08-01" })
+  })
+
+  it("remembers how a bill falls due, not just its day", () => {
+    M.setLineDueDate(data, line("Power").id, "2026-09-18", now)
+    expect(item("Power").due).toEqual({ offsetMonths: 0, day: 18 })
+
+    // Sewer arrives in September for August, due the 1st of October. Next
+    // month's statement has to put it on 1 November, not 1 October.
+    M.setLineDueDate(data, line("Sewer").id, "2026-10-01", now)
+    expect(item("Sewer").due).toEqual({ offsetMonths: 1, day: 1 })
+    M.startNewMonth(data, "2026-10", now)
+    expect(line("Sewer").dueDate).toBe("2026-11-01")
+    expect(line("Sewer").covers).toEqual({ start: "2026-09-01", end: "2026-09-30" })
+
+    M.setLineDueDate(data, line("Power").id, null, now)
+    expect(item("Power").due).toBeUndefined()
+    expect(line("Power").dueDate).toBeUndefined()
+  })
+
+  it("carries a due rule set in Setup into the working month", () => {
+    M.upsertItem(data, { ...item("Sewer"), due: { offsetMonths: 1, day: 1 } })
+    expect(line("Sewer").dueDate).toBe("2026-10-01")
+    M.upsertItem(data, { ...item("Sewer"), due: undefined })
+    expect(line("Sewer").dueDate).toBeUndefined()
+  })
+
+  it("still validates after all of it", () => {
+    expect(appDataSchema.safeParse(data).success).toBe(true)
+  })
+})
+
+describe("catch-up seeding", () => {
+  it("starts from the residency already on record", () => {
+    M.setPersonResidency(data, biscuit, { from: "2026-09-16" })
+    M.ensureCatchup(data, biscuit, "2026-09-19")
+    expect(data.catchups[biscuit]!.moveIn).toBe("2026-09-16")
+  })
+
+  it("falls back to today when there's no residency", () => {
+    M.ensureCatchup(data, biscuit, "2026-09-19")
+    expect(data.catchups[biscuit]!.moveIn).toBe("2026-09-19")
+  })
+})

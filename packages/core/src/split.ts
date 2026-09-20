@@ -1,6 +1,14 @@
+import { residentDays, windowDays } from "./coverage"
 import { lineAmountCents } from "./meter"
 import { type Cents, allocate } from "./money"
-import type { ItemSplit, MonthLine, MonthRecord, Split } from "./schema"
+import type {
+  ItemSplit,
+  MonthLine,
+  MonthRecord,
+  Participant,
+  ServiceWindow,
+  Split,
+} from "./schema"
 
 /** Key for the owner's share in every per-participant record. */
 export const OWNER = "owner"
@@ -40,6 +48,53 @@ export function splitPctTotal(split: Split | ItemSplit): number {
   return Object.values(split.pct).reduce((a, b) => a + (b || 0), 0)
 }
 
+/**
+ * Occupancy scales each roommate's weight by the share of the line's service
+ * window they lived through. What that frees up goes to the owner, who was on
+ * the hook for the rest of it — never to the other roommates, who shouldn't
+ * pay more because someone moved in late.
+ *
+ * Weighting is by whole days rather than a rounded fraction, over the window's
+ * day count as a common denominator, so the parts still add up to the cent.
+ */
+function occupancyWeights(
+  weights: number[],
+  covers: ServiceWindow | undefined,
+  participants: Participant[]
+): { weights: number[]; fractions: Record<string, number> } {
+  const fractions: Record<string, number> = {}
+  const total = covers ? windowDays(covers) : 0
+  if (!covers || total <= 0) {
+    for (const p of participants) fractions[p.personId] = 1
+    return { weights, fractions }
+  }
+
+  const scaled = [(weights[0] ?? 0) * total]
+  participants.forEach((person, i) => {
+    const weight = weights[i + 1] ?? 0
+    const days = person.from || person.to ? residentDays(covers, person) : total
+    const kept = Math.min(total, days)
+    fractions[person.personId] = kept / total
+    scaled.push(weight * kept)
+    scaled[0] = scaled[0]! + weight * (total - kept)
+  })
+  return { weights: reduce(scaled), fractions }
+}
+
+/** Shrinks weights by their common factor; the split is a ratio either way. */
+function reduce(weights: number[]): number[] {
+  const divisor = weights.reduce(
+    (a, b) => gcd(a, Math.abs(Math.trunc(b))),
+    0
+  )
+  return divisor > 1 ? weights.map((w) => w / divisor) : weights
+}
+
+function gcd(a: number, b: number): number {
+  while (b) [a, b] = [b, a % b]
+  return a
+}
+
 export type ComputedLine = {
   line: MonthLine
   amountCents: Cents
@@ -47,6 +102,10 @@ export type ComputedLine = {
   entered: boolean
   /** Keyed by OWNER and each participant's personId; sums to amountCents. */
   shares: Record<string, Cents>
+  /** Per participant, 0–1: how much of this line's service they were here for. */
+  occupancy: Record<string, number>
+  /** True when someone was here for only part of what this line covers. */
+  prorated: boolean
 }
 
 export type ComputedMonth = {
@@ -68,13 +127,25 @@ export function computeMonth(
     const raw = lineAmountCents(line)
     const amountCents = raw ?? 0
     const split = line.split.mode === "default" ? month.split : line.split
-    const parts = allocate(amountCents, shareWeights(split, personIds))
+    const { weights, fractions } = occupancyWeights(
+      shareWeights(split, personIds),
+      line.covers,
+      month.participants
+    )
+    const parts = allocate(amountCents, weights)
     const shares: Record<string, Cents> = {}
     keys.forEach((key, i) => {
       shares[key] = parts[i] ?? 0
       totals[key] = (totals[key] ?? 0) + shares[key]
     })
-    return { line, amountCents, entered: raw !== null, shares }
+    return {
+      line,
+      amountCents,
+      entered: raw !== null,
+      shares,
+      occupancy: fractions,
+      prorated: Object.values(fractions).some((f) => f < 1),
+    }
   })
 
   return {

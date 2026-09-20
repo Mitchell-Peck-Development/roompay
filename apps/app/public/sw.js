@@ -1,13 +1,17 @@
 /*
  * RoomPay offline shell. Deliberately small:
  *  - /_next/static/* is content-hashed, so cache-first is safe.
- *  - The app page itself is network-first, falling back to the last copy, so
- *    the installed app opens (with all its local data) without a connection.
+ *  - The app page ("/app") is network-first, falling back to the last copy,
+ *    so the installed app opens (with all its local data) without a
+ *    connection. The landing page at "/" is left to the network.
  *  - Share pages, calendar feeds and the API are never cached: they must be
  *    live, and a share page belongs to someone else's data.
  */
-const VERSION = "roompay-v1"
-const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"]
+// v2 moved the app from "/" to "/app". The version bump drops the old cache,
+// which still held the app shell under "/" — where the landing page is now.
+const VERSION = "roompay-v2"
+const APP_PATH = "/app"
+const SHELL = [APP_PATH, "/manifest.webmanifest", "/icon.svg"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -48,17 +52,17 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  if (request.mode === "navigate" && url.pathname === "/") {
+  if (request.mode === "navigate" && url.pathname === APP_PATH) {
     event.respondWith(
       fetch(request)
         .then((response) => {
           if (response.ok) {
             const copy = response.clone()
-            caches.open(VERSION).then((cache) => cache.put("/", copy))
+            caches.open(VERSION).then((cache) => cache.put(APP_PATH, copy))
           }
           return response
         })
-        .catch(() => caches.match("/").then((hit) => hit || Response.error()))
+        .catch(() => caches.match(APP_PATH).then((hit) => hit || Response.error()))
     )
   }
 })

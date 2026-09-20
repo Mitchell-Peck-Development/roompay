@@ -10,6 +10,10 @@ import { OWNER, computeMonth } from "./split"
 /**
  * History as a spreadsheet: one row per bill line, a Total row per month, and
  * a column per person. Amounts are plain numbers so they add up in a sheet.
+ *
+ * Each line also carries the service window it pays for and when it fell due,
+ * as ISO dates — a sheet can sort and filter those, and they explain why a
+ * share isn't a clean split when someone was only here for part of it.
  */
 
 // A cell starting with one of these is treated as a formula by Excel and
@@ -75,6 +79,9 @@ export function historyCsv(
       "Item",
       "Type",
       "Detail",
+      "Covers from",
+      "Covers to",
+      "Due",
       "Currency",
       "Bill",
       "You",
@@ -90,6 +97,8 @@ export function historyCsv(
     item: string,
     type: string,
     detail: string,
+    covers: [from: string, to: string],
+    due: string,
     bill: string,
     owner: string,
     cells: Map<string, [share: string, received: string, sharedOn: string]>
@@ -100,6 +109,8 @@ export function historyCsv(
     item,
     type,
     detail,
+    ...covers,
+    due,
     currency,
     bill,
     owner,
@@ -129,6 +140,8 @@ export function historyCsv(
           (line.line.kind === "metered" && line.line.meter
             ? meterDetail(line.line.meter, currency)
             : "") ?? "",
+          [line.line.covers?.start ?? "", line.line.covers?.end ?? ""],
+          line.line.dueDate ?? "",
           line.entered ? amount(line.amountCents) : "",
           line.entered ? amount(line.shares[OWNER] ?? 0) : "",
           shares
@@ -155,6 +168,8 @@ export function historyCsv(
         "",
         "",
         "",
+        ["", ""],
+        "",
         amount(computed.totalCents),
         amount(computed.totals[OWNER] ?? 0),
         totals
@@ -174,8 +189,22 @@ export function historyCsv(
       const only = (share: Cents, received = "", sharedOn = "") =>
         new Map([[person.id, [amount(share), received, sharedOn] as [string, string, string]]])
 
+      // Each item's share here is what they owe for it across the whole
+      // catch-up, so these rows add up to the Total below.
       const out = result.lines.map((line) =>
-        row(period, title, "Item", line.label, "estimate", "", amount(line.fullCents), "", only(line.shareCents))
+        row(
+          period,
+          title,
+          "Item",
+          line.label,
+          "estimate",
+          "",
+          ["", ""],
+          "",
+          amount(line.fullCents),
+          "",
+          only(line.shareCents)
+        )
       )
       out.push(
         row(
@@ -185,13 +214,17 @@ export function historyCsv(
           "",
           "",
           `${result.daysOccupied} of ${result.daysInMonth} days`,
+          ["", ""],
+          "",
           "",
           "",
           only(result.stubShareCents)
         )
       )
       if (result.nextMonthShareCents > 0) {
-        out.push(row(period, title, "Next month", "", "", "", "", "", only(result.nextMonthShareCents)))
+        out.push(
+          row(period, title, "Next month", "", "", "", ["", ""], "", "", "", only(result.nextMonthShareCents))
+        )
       }
       out.push(
         row(
@@ -200,6 +233,8 @@ export function historyCsv(
           "Total",
           "",
           "",
+          "",
+          ["", ""],
           "",
           "",
           "",

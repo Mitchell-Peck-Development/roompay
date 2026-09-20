@@ -49,7 +49,16 @@ export function periodOf(date: ISODate): Period {
   return date.slice(0, 7)
 }
 
-function shiftPeriod(period: Period, months: number): Period {
+export function firstOfPeriod(period: Period): ISODate {
+  return `${period}-01`
+}
+
+export function lastOfPeriod(period: Period): ISODate {
+  return `${period}-${pad(daysInMonth(period))}`
+}
+
+/** The period `months` away (negative goes back). */
+export function shiftPeriod(period: Period, months: number): Period {
   const [y, m] = splitPeriod(period)
   const d = new Date(Date.UTC(y, m - 1 + months, 1))
   return `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1)}`

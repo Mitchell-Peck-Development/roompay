@@ -51,7 +51,7 @@ export function MonthTab() {
       >
         <div className="flex flex-col divide-y">
           {computed.lines.map((line) => (
-            <LineRow key={line.line.id} computed={line} people={people} />
+            <LineRow key={line.line.id} computed={line} people={people} period={month.period} />
           ))}
           {computed.lines.length === 0 && (
             <p className="py-3 text-sm text-muted-foreground">

@@ -83,8 +83,8 @@ describe("historyCsv", () => {
 
   it("heads with one column per person", () => {
     expect(rows()[0]).toEqual([
-      "Month", "Statement", "Row", "Item", "Type", "Detail", "Currency", "Bill",
-      "You", "Biscuit", "Biscuit received", "Biscuit shared on",
+      "Month", "Statement", "Row", "Item", "Type", "Detail", "Covers from", "Covers to", "Due",
+      "Currency", "Bill", "You", "Biscuit", "Biscuit received", "Biscuit shared on",
     ])
   })
 
@@ -94,18 +94,23 @@ describe("historyCsv", () => {
       "Rent", "Service fee", "Trash disposal", "Sewer", "Water", "Power", "",
     ])
     expect(body[0]).toEqual([
-      "2026-09", "September 2026", "Item", "Rent", "fixed", "", "USD", "1648.00", "824.00", "824.00", "", "",
+      "2026-09", "September 2026", "Item", "Rent", "fixed", "",
+      "2026-09-01", "2026-09-30", "2026-09-01",
+      "USD", "1648.00", "824.00", "824.00", "", "",
     ])
-    expect(find("Power").slice(2, 10)).toEqual([
-      "Item", "Power", "variable", "", "USD", "160.00", "80.00", "80.00",
+    // Power is billed in arrears, so September's bill covers August and has
+    // no due date of its own.
+    expect(find("Power").slice(2, 13)).toEqual([
+      "Item", "Power", "variable", "", "2026-08-01", "2026-08-31", "", "USD", "160.00", "80.00", "80.00",
     ])
     expect(body.at(-1)).toEqual([
-      "2026-09", "September 2026", "Total", "", "", "", "USD", "1808.00", "904.00", "904.00", "0.00", "",
+      "2026-09", "September 2026", "Total", "", "", "", "", "", "",
+      "USD", "1808.00", "904.00", "904.00", "0.00", "",
     ])
   })
 
   it("leaves a line that was never filled in blank, rather than zero", () => {
-    expect(find("Water").slice(7, 10)).toEqual(["", "", ""])
+    expect(find("Water").slice(10, 13)).toEqual(["", "", ""])
   })
 
   it("shows metered working, one-time items and credits", () => {
@@ -122,8 +127,10 @@ describe("historyCsv", () => {
     M.addOneOffLine(data, { label: "Groceries, split", amountCents: -4000 }, now)
     M.saveCurrent(data, now)
 
-    expect(find("Gas").slice(4, 8)).toEqual(["metered", "23.4 therm × $1.2345", "USD", "28.89"])
-    expect(find("Groceries, split").slice(4, 10)).toEqual(["credit", "", "USD", "-40.00", "-20.00", "-20.00"])
+    expect(find("Gas").slice(4, 6)).toEqual(["metered", "23.4 therm × $1.2345"])
+    expect(find("Gas").slice(9, 11)).toEqual(["USD", "28.89"])
+    expect(find("Groceries, split").slice(4, 6)).toEqual(["credit", ""])
+    expect(find("Groceries, split").slice(9, 13)).toEqual(["USD", "-40.00", "-20.00", "-20.00"])
     // The comma in that label survives a round trip through the file.
     expect(historyCsv(data)).toContain('"Groceries, split"')
   })
@@ -136,7 +143,7 @@ describe("historyCsv", () => {
       hash: "h",
     })
     const total = rows().at(-1)!
-    expect(total.slice(9)).toEqual(["904.00", "250.00", "2026-09-19"])
+    expect(total.slice(12)).toEqual(["904.00", "250.00", "2026-09-19"])
   })
 
   it("includes a move-in catch-up, prorated and all", () => {
@@ -150,13 +157,22 @@ describe("historyCsv", () => {
     expect(catchup.map((r) => r[2])).toEqual([
       "Item", "Item", "Item", "Item", "Item", "Item", "Prorated", "Next month", "Total",
     ])
-    expect(catchup[0]!.slice(3, 10)).toEqual(["Rent", "estimate", "", "USD", "1648.00", "", "824.00"])
+    // An item's share is what they owe for it across the whole catch-up, so
+    // the item rows add up to the Total.
+    expect(catchup[0]!.slice(3, 13)).toEqual([
+      "Rent", "estimate", "", "", "", "", "USD", "1648.00", "", "1290.93",
+    ])
     const at = (kind: string) => catchup.find((r) => r[2] === kind)!
     expect(at("Prorated")[5]).toBe("17 of 30 days")
-    // 904.00 × 17/30 = 512.27, plus the next full month.
-    expect(at("Prorated")[9]).toBe("512.27")
-    expect(at("Next month")[9]).toBe("904.00")
-    expect(at("Total")[9]).toBe("1416.27")
+    // September's power bill covers August, before they moved in, so the stub
+    // is rent alone: 824.00 × 17/30. Their first full month picks power up.
+    expect(at("Prorated")[12]).toBe("466.93")
+    expect(at("Next month")[12]).toBe("869.33")
+    expect(at("Total")[12]).toBe("1336.26")
+    const items = catchup
+      .filter((r) => r[2] === "Item")
+      .reduce((sum, r) => sum + Number(r[12]), 0)
+    expect(items.toFixed(2)).toBe(at("Total")[12])
   })
 
   it("runs oldest month first and can leave catch-ups out", () => {

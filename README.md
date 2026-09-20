@@ -4,6 +4,8 @@ Split rent and bills with roommates. The person who pays the landlord works out 
 offers a few ways to pay it across the month, and sends each roommate a link with their share and the due
 dates. The roommate picks a plan and puts the dates in their calendar.
 
+- **Bills are billed for the period they cover.** The water statement that lands at the end of
+  September is August's usage, so August's residents owe it — not whoever's on September's split.
 - **No accounts.** Roommates are arbitrary labels ("Biscuit", "Room B"), never names.
 - **Per-device.** Everything the owner enters lives in their browser. A backup file moves it between devices.
 - **Server storage is opt-in.** Only publishing a share link sends anything to the server: a snapshot of that
@@ -16,21 +18,27 @@ Plan: [`docs/superpowers/plans/2026-09-18-roompay.md`](docs/superpowers/plans/20
 ## Layout
 
 ```
-apps/app        the product (Next.js 16, App Router)                  → localhost:3001
-apps/web        marketing site — a placeholder landing page for now   → localhost:3000
+apps/app        everything served on one origin (Next.js 16, App Router)  → localhost:3001
+  /               the landing page
+  /app            the product
+  /r/<token>      a roommate's share link
 packages/core   all the money logic: splits, plans, catch-up, ICS, share payloads, backup (pure TS, tested)
-packages/ui     shadcn/ui components and the theme, shared by both apps
+packages/ui     shadcn/ui components and the theme
 supabase/migrations   the rp schema — applied by hand, see below
 e2e/            Playwright smoke tests
 ```
+
+One deployment, one origin. The landing page, the app and the share links are routes in the same
+Next app, so a share link is short (`roompay.example/r/abc…`) and the app needs no second domain.
 
 ## Develop
 
 ```sh
 pnpm install
-pnpm dev:app        # the app, with a built-in database — no Supabase needed
-pnpm dev:web        # the landing page
+pnpm dev:app        # everything, with a built-in database — no Supabase needed
 ```
+
+The landing page is at <http://localhost:3001>, the app itself at <http://localhost:3001/app>.
 
 With no `SUPABASE_URL` set, the app runs its share links on **PGlite**: an in-process Postgres that loads the
 real migrations from `supabase/migrations/`, persisted in `apps/app/.pglite/`. So local sharing exercises the same
@@ -82,12 +90,86 @@ publishing happens, and daily by `pg_cron` if that extension is installed.
 
 ## Deploy
 
-Two Vercel projects (or similar) from this repo, with root directories `apps/app` and `apps/web`.
+One Vercel project (or similar) from this repo, with root directory `apps/app`.
 
-- `apps/app`: `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
+- `APP_URL` (the public https origin — Google and Outlook fetch calendar feeds from
   their own servers, so it must be reachable), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`. A production server
   with no Supabase configured answers share requests with `503 sharing_unconfigured`; everything local still works.
-- `apps/web`: `NEXT_PUBLIC_APP_URL` pointing at the app.
+
+  **Publishing returns 503 and Supabase *is* configured?** The 503 only happens when one of those
+  two names is unset *in the server process*, so the response body and the deploy log both name
+  which one. The usual causes, in order:
+
+  1. **The names don't match.** Supabase's own Vercel integration supplies `SUPABASE_ANON_KEY` and
+     `NEXT_PUBLIC_SUPABASE_ANON_KEY` — never `SUPABASE_PUBLISHABLE_KEY`, which is what this app
+     reads. Copy the publishable key across under that exact name.
+  2. **Set on the wrong environment, or not redeployed.** Vercel only picks up new variables on the
+     next deployment, and Preview and Production are scoped separately.
+  3. **Local `next start`.** That runs with `NODE_ENV=production`, so it won't fall back to PGlite
+     the way `pnpm dev:app` does — put both variables in `apps/app/.env.local` (the app directory,
+     not the repo root) or run with `RP_BACKEND=pglite`.
+
+  A 503 from `/r/<token>/calendar.ics` is a different thing: that one means the database was
+  unreachable, and it's deliberate so subscribed calendars keep what they already have.
+
+`APP_URL` also makes the landing page's Open Graph image, its canonical URL and the sitemap
+absolute, so links preview correctly when shared.
+
+### The installed app lives at `/app`
+
+The web app manifest keeps `id: "/"` — that string is the installed app's identity, so changing it
+would read as a different app and install a second copy beside anyone's existing one — while
+`start_url` and `scope` are `/app`. Share links at `/r/…` sit outside that scope deliberately: they
+belong to the roommate and should open in a browser, not in the owner's installed app.
+
+The service worker still registers at `/`, because anyone who installed an earlier version already
+has a worker there, and re-registering updates it in place instead of orphaning it. Its cache
+version is bumped so the old one — which held the app shell under `/`, where the landing page is
+now — is dropped on activation. Local data is keyed to the origin, not the path, so nothing is
+lost by the move.
+
+## Offset bills, residency and the Bills calendar
+
+A bill has three dates, and they move independently. The sewer statement that turns up in
+September is **billed** in September, **covers** August's service, and isn't **due** until
+1 October. RoomPay keeps all three apart, because each answers a different question:
+
+| | what it is | what it decides |
+| --- | --- | --- |
+| **Billed** | the statement it lands on (`month.period`) | which month's paperwork it belongs to |
+| **Covers** | the stretch of service it pays for (`covers: { start, end }`) | **who owes it** |
+| **Due** | when the money has to leave (`dueDate`) | when you pay it, and where it sits on the calendar |
+
+Shares are weighted by the days of a bill's *coverage* each roommate was actually here — one
+mechanism for bills in arrears, mid-month move-ins and move-outs alike. A due date never moves
+money between people; it only moves the bill around the calendar.
+
+- **Coverage** lives on the item (Setup → Line items): *this month*, *last month*, *2 months
+  back*, and how many months one bill spans. Rent and fees default to the month they're billed in;
+  water, sewer and power default to the month before.
+- **Due** lives there too, as a month offset plus a day — *the following month*, the 1st — so a
+  bill billed now can fall due next month, or (for a landlord who wants rent early) the month
+  before. It's clamped into whatever month it lands in, so the 31st is the 28th in February.
+- Both are concrete on each month's line and overridable for a single month from that bill's
+  panel — for the quarterly sewer bill, or the one that turned up late. Setting a date by hand
+  remembers the *gap* from the billed month, not just the day, so next month's statement comes
+  out right.
+- **Residency** lives on the person (Setup → Roommates). Leave it empty and nothing prorates, so
+  existing data behaves exactly as before. Set a move-in date and every bill is weighted by it.
+  The Catch-up tab's move-in date is the same field.
+- **Whatever a roommate doesn't owe falls to the owner**, never to the other roommates — nobody
+  pays more because someone moved in late.
+- **Day-exact.** Weights are whole days over the window's day count, not a rounded fraction, so
+  the parts still add up to the cent.
+
+The **Bills** tab lays a statement out as a calendar, following the due dates wherever they land:
+one grid per month the statement actually has payments in, so a bill billed in September and due
+1 October appears under October, labelled *due after this statement*. Bills with no due date sit
+in "Not on the calendar" until you give them one.
+
+A move-in catch-up works the same way, statement by statement: a roommate arriving in September
+owes nothing of the water bill that September's statement carries (it's August's), and picks it up
+prorated on October's statement instead.
 
 ## Sharing and calendars
 
@@ -149,10 +231,12 @@ These can't be covered by automated tests. Try them against a deployed build (su
 ## History as a spreadsheet
 
 **History → Export CSV** writes every saved month: one row per bill line, then a `Total` row, with a column for
-the bill amount, your share, and each person's share, what they've paid and when that month was shared. Move-in
-catch-ups come along as their own rows (`Prorated`, `Next month`, `Total`). Months run oldest first, amounts are
-plain numbers so they add up, and the file carries a BOM so Excel reads it as UTF-8. It's a report, not a backup —
-it can't be imported.
+the bill amount, your share, and each person's share, what they've paid and when that month was shared. Each line
+also carries the service window it pays for (`Covers from` / `Covers to`) and its due date, as ISO dates — which
+is what explains a share that isn't a clean split, since a bill billed in arrears is only owed by whoever lived
+here during it. Move-in catch-ups come along as their own rows (`Prorated`, `Next month`, `Total`), and their
+item rows add up to that total. Months run oldest first, amounts are plain numbers so they add up, and the file
+carries a BOM so Excel reads it as UTF-8. It's a report, not a backup — it can't be imported.
 
 ## Local data and backups
 
