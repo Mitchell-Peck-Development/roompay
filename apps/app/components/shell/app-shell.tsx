@@ -12,6 +12,7 @@ import { SetupTab } from "@/components/setup/setup-tab"
 import { startPersistence, useData, useHydrated } from "@/lib/store"
 import { FirstRun } from "./first-run"
 import { InstallNudge } from "./install-nudge"
+import { RecoveryNotice } from "./recovery-notice"
 
 const TABS = [
   { id: "bills", label: "Bills", icon: CalendarDays },
@@ -81,6 +82,7 @@ export function AppShell() {
         </nav>
       </header>
 
+      <RecoveryNotice />
       <InstallNudge />
 
       <main className="flex flex-col gap-4">

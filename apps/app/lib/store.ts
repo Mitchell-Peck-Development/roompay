@@ -1,6 +1,6 @@
 "use client"
 
-import { type AppData, appDataSchema, createInitialData } from "@workspace/core"
+import { type AppData, createInitialData, parseAppData } from "@workspace/core"
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 
@@ -15,8 +15,14 @@ type Store = {
   data: AppData
   /** False until localStorage has been read; render a skeleton until then. */
   hydrated: boolean
+  /**
+   * Anything in the saved document that couldn't be read on the way in. The
+   * rest was kept, and the original is still under `roompay:v1:corrupt`.
+   */
+  recovery: { dropped: string[]; fresh: boolean } | null
   update(mutate: (draft: AppData) => void): void
   replace(data: AppData): void
+  clearRecovery(): void
 }
 
 export const useStore = create<Store>()(
@@ -24,6 +30,7 @@ export const useStore = create<Store>()(
     (set) => ({
       data: createInitialData(new Date()),
       hydrated: false,
+      recovery: null,
       update(mutate) {
         set((state) => {
           const draft = structuredClone(state.data)
@@ -34,6 +41,9 @@ export const useStore = create<Store>()(
       },
       replace(data) {
         set({ data })
+      },
+      clearRecovery() {
+        set({ recovery: null })
       },
     }),
     {
@@ -46,16 +56,18 @@ export const useStore = create<Store>()(
       merge(persisted, current) {
         const stored = (persisted as { data?: unknown } | undefined)?.data
         if (stored === undefined) return current
-        const parsed = appDataSchema.safeParse(stored)
-        if (parsed.success) return { ...current, data: parsed.data }
-        // Never crash on, or silently overwrite, data we can't read: park it
-        // where a person (or a future version) can still get at it.
+
+        // Anything unreadable is dropped on its own rather than costing the
+        // whole document — a year of saved months shouldn't ride on one bad
+        // value. What can't be read is reported, and the original is kept.
+        const { data, dropped, fresh } = parseAppData(stored)
+        if (dropped.length === 0) return { ...current, data, recovery: null }
         try {
           localStorage.setItem(CORRUPT_KEY, JSON.stringify(stored))
         } catch {
           // Storage is full or unavailable; nothing more we can do.
         }
-        return current
+        return { ...current, data, recovery: { dropped, fresh } }
       },
     }
   )

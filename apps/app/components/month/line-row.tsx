@@ -70,6 +70,9 @@ export function LineRow({
             <BillPopover line={line} period={period} amount={false}>
               <button
                 type="button"
+                // Says which bill it belongs to: on its own, "Covers August
+                // 2026" tells a screen reader nothing about which line it is.
+                aria-label={`Period and due date for ${line.label}`}
                 className={`flex items-center gap-1 rounded text-xs underline decoration-dotted underline-offset-4 ${
                   offset ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}

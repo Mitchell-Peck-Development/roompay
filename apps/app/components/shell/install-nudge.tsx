@@ -25,7 +25,7 @@ export function InstallNudge() {
     <aside className="relative mb-4 rounded-xl bg-accent p-4 pr-10 text-sm text-accent-foreground">
       <button
         type="button"
-        aria-label="Dismiss"
+        aria-label="Dismiss the install tip"
         onClick={actions.dismissInstallNudge}
         className="absolute top-2.5 right-2.5 rounded-md p-1 opacity-70 hover:opacity-100"
       >

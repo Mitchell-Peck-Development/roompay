@@ -394,3 +394,23 @@ month, received totals, shared-on dates, and move-in catch-ups included.
 - Merged with the coverage work that landed alongside it: each line row also carries `Covers from`, `Covers to`
   and `Due` (ISO dates), and a catch-up's item rows carry what's owed for that item across the whole catch-up,
   so they sum to its `Total`.
+
+## Addendum (2026-09-20): keeping what's saved
+
+Owner asked to be sure nothing stored locally resets — bill periods in particular. Two things came out of it.
+
+**A real reset, now fixed.** `upsertItem` re-derived a line's `covers` and `dueDate` from its item on *every*
+edit, so a period set by hand for one month (the quarterly sewer bill) was silently reverted by an unrelated
+change such as a rename. It now only follows the item when the line still matches what the item said before the
+edit; a hand-set period or due date is left alone. Covered by a unit test and an end-to-end test, both of which
+fail without the fix.
+
+**Loading is no longer all-or-nothing** (amends §3.7). `parseAppData` salvages: unreadable months, bill lines,
+roommates, items, cadences, catch-ups and links are dropped individually; unreadable settings fall back to
+defaults; the working month is rebuilt from what's left if it can't be read. Only a missing or non-object
+document starts fresh. What was dropped is reported to the owner, the original is still copied to
+`roompay:v1:corrupt`, and the notice offers to save it as a file.
+
+A round-trip test builds a document exercising every field the app can write — coverage, due dates, residency,
+meter readings, per-line splits, paid entries, published markers, link secrets, catch-ups — and asserts nothing
+is lost through save and load, which also guards against a field being written but never added to the schema.

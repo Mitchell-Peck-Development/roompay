@@ -240,10 +240,21 @@ carries a BOM so Excel reads it as UTF-8. It's a report, not a backup — it can
 
 ## Local data and backups
 
-The owner's data is one JSON document in `localStorage` (`roompay:v1`), validated on load. If it can't be read it
-is set aside (`roompay:v1:corrupt`) rather than overwritten. **Setup → Backup** exports a file (or hands it to the
-share sheet on phones). Importing offers **Merge** (by id; the newer edit wins) or **Replace**. The file
-contains the keys that control share links, so it should be kept private.
+The owner's data is one JSON document in `localStorage` (`roompay:v1`), read back through `parseAppData`.
+
+Because it's one blob, a strict all-or-nothing parse would trade a year of saved months for a single bad value.
+So anything unreadable is dropped on its own — that month, that roommate, that bill line — and everything else is
+kept. A damaged month keeps the lines that still parse; a damaged setting falls back to its default. The original
+document is copied to `roompay:v1:corrupt` and the app says what it skipped, with a button to save that copy.
+Only a document that is missing or not an object at all starts fresh.
+
+Two rules keep a bill's own settings from being quietly rewritten: a period or due date set by hand on one
+month's bill outlives edits to its item (renaming the sewer bill doesn't undo the quarter it covers), while a
+line still matching its item's settings follows when those change.
+
+**Setup → Backup** exports a file (or hands it to the share sheet on phones). Importing offers **Merge** (by id;
+the newer edit wins) or **Replace**. The file contains the keys that control share links, so it should be kept
+private.
 
 Safari deletes a site's storage after seven days of browser use without a visit, and a monthly tool would hit
 that. Home Screen apps are exempt, so the app is an installable PWA, iPhone users are nudged to install early
