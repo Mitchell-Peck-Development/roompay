@@ -156,3 +156,74 @@ describe("computeMonth · service windows", () => {
     expect(month.lines[0]!.prorated).toBe(false)
   })
 })
+
+describe("splitting among some of us", () => {
+  const two = [
+    { personId: "a", nickname: "A" },
+    { personId: "b", nickname: "B" },
+  ]
+  const three = [...two, { personId: "c", nickname: "C" }]
+
+  it("shares evenly among exactly the people named", () => {
+    const m = computeMonth({
+      lines: [line("Parking", 9000, { mode: "only", personIds: ["b", OWNER] })],
+      split: { mode: "even" },
+      participants: two,
+    })
+    expect(m.lines[0]!.shares).toEqual({ [OWNER]: 4500, a: 0, b: 4500 })
+  })
+
+  it("leaves no stray cent with the owner, where percentages would", () => {
+    const m = computeMonth({
+      lines: [line("Groceries", -6000, { mode: "only", personIds: ["a", "b", "c"] })],
+      split: { mode: "even" },
+      participants: three,
+    })
+    expect(m.lines[0]!.shares).toEqual({ [OWNER]: 0, a: -2000, b: -2000, c: -2000 })
+    expect(m.totals[OWNER]).toBe(0)
+  })
+
+  it("divides an odd amount without losing a cent", () => {
+    const m = computeMonth({
+      lines: [line("Credit", -5000, { mode: "only", personIds: ["a", "b", "c"] })],
+      split: { mode: "even" },
+      participants: three,
+    })
+    const shares = Object.values(m.lines[0]!.shares)
+    expect(shares.reduce((sum, cents) => sum + cents, 0)).toBe(-5000)
+    expect(shares.filter((c) => c !== 0).sort((x, y) => x - y)).toEqual([-1667, -1667, -1666])
+  })
+
+  it("'all roommates' follows the household as it changes", () => {
+    const credit = line("Pizza I owe them", -6000, { mode: "roommates" })
+    const withTwo = computeMonth({ lines: [credit], split: { mode: "even" }, participants: two })
+    expect(withTwo.lines[0]!.shares).toEqual({ [OWNER]: 0, a: -3000, b: -3000 })
+
+    const withThree = computeMonth({ lines: [credit], split: { mode: "even" }, participants: three })
+    expect(withThree.lines[0]!.shares).toEqual({ [OWNER]: 0, a: -2000, b: -2000, c: -2000 })
+  })
+
+  it("falls back to the owner when it names nobody who's here", () => {
+    const m = computeMonth({
+      lines: [line("Odd one", 1000, { mode: "only", personIds: ["gone"] })],
+      split: { mode: "even" },
+      participants: two,
+    })
+    expect(m.lines[0]!.shares).toEqual({ [OWNER]: 1000, a: 0, b: 0 })
+    const nobody = computeMonth({
+      lines: [line("Credit", -1000, { mode: "roommates" })],
+      split: { mode: "even" },
+      participants: [],
+    })
+    expect(nobody.lines[0]!.shares).toEqual({ [OWNER]: -1000 })
+  })
+
+  it("a credit off the whole bill just follows the month's split", () => {
+    const m = computeMonth({
+      lines: [line("Blender", -5000, { mode: "default" })],
+      split: { mode: "even" },
+      participants: [{ personId: "a", nickname: "A" }],
+    })
+    expect(m.lines[0]!.shares).toEqual({ [OWNER]: -2500, a: -2500 })
+  })
+})

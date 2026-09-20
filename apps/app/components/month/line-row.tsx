@@ -23,6 +23,7 @@ import { actions } from "@/lib/actions"
 import { currencySymbol } from "@/lib/format"
 import { useData } from "@/lib/store"
 import { BillPopover, coversLabel, coversOwnMonth } from "./bill-popover"
+import { CreditPopover } from "./credit-popover"
 import { LineSplitPopover } from "./line-split-popover"
 
 /** Participants carry residency, which is what the proration note explains. */
@@ -46,65 +47,27 @@ export function LineRow({
   const { line } = computed
   const inputId = `line-${line.id}`
   const offset = !coversOwnMonth(line, period)
+  const isCredit = Boolean(line.oneOff) && (line.amountCents ?? 0) < 0
 
   return (
-    <div className="flex flex-col gap-2 py-3 first:pt-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 pt-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Label htmlFor={inputId} className="text-sm font-medium">
-              {line.label || "Untitled"}
-            </Label>
-            {line.oneOff ? (
-              <Badge variant="secondary">{(line.amountCents ?? 0) < 0 ? "credit" : "one-time"}</Badge>
-            ) : (
-              <span className="text-xs text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
-            )}
-            {line.dueDate && (
-              <span className="tabular text-xs text-muted-foreground">
-                due {formatShortDate(line.dueDate)}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-2">
-            <BillPopover line={line} period={period} amount={false}>
-              <button
-                type="button"
-                // Says which bill it belongs to: on its own, "Covers August
-                // 2026" tells a screen reader nothing about which line it is.
-                aria-label={`Period and due date for ${line.label}`}
-                className={`flex items-center gap-1 rounded text-xs underline decoration-dotted underline-offset-4 ${
-                  offset ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {offset && <History className="size-3 shrink-0" aria-hidden />}
-                Covers {coversLabel(line, period)}
-              </button>
-            </BillPopover>
-                </div>
-          {people.length > 0 && (
-            <LineSplitPopover
-              lineId={line.id}
-              split={line.split}
-              people={people}
-              onChange={(split) => actions.setLineSplit(line.id, split)}
-            />
-          )}
-        </div>
-
+    <div className="flex flex-col gap-1.5 py-3 first:pt-0">
+      {/* Name and amount share a row; everything about the bill goes on its
+          own row below, where it has the full width to wrap into. */}
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={inputId} className="min-w-0 flex-1 truncate text-sm font-medium">
+          {line.label || "Untitled"}
+        </Label>
         <div className="flex shrink-0 items-center gap-1">
           {line.kind === "metered" && line.meter ? (
-            <div className="pt-1 text-right">
-              {computed.entered ? (
-                <Amount cents={computed.amountCents} className="text-base font-semibold" />
-              ) : (
-                <span className="text-sm text-muted-foreground">enter usage</span>
-              )}
-            </div>
+            computed.entered ? (
+              <Amount cents={computed.amountCents} className="text-base font-semibold" />
+            ) : (
+              <span className="text-sm text-muted-foreground">enter usage</span>
+            )
           ) : (
             <MoneyInput
               id={inputId}
-              className="w-32"
+              className="w-28 min-[380px]:w-32"
               value={line.amountCents}
               allowNegative={line.oneOff}
               onCommit={(cents) => actions.setLineAmount(line.id, cents)}
@@ -121,6 +84,47 @@ export function LineRow({
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {line.oneOff ? (
+          <Badge variant="secondary">{isCredit ? "credit" : "one-time"}</Badge>
+        ) : (
+          <span className="text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
+        )}
+        <BillPopover line={line} period={period} amount={false}>
+          <button
+            type="button"
+            // Says which bill it belongs to: on its own, "Covers August
+            // 2026" tells a screen reader nothing about which line it is.
+            aria-label={`Period and due date for ${line.label}`}
+            className={`flex items-center gap-1 rounded underline decoration-dotted underline-offset-4 ${
+              offset ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {offset && <History className="size-3 shrink-0" aria-hidden />}
+            Covers {coversLabel(line, period)}
+          </button>
+        </BillPopover>
+        {line.dueDate && (
+          <span className="tabular text-muted-foreground">due {formatShortDate(line.dueDate)}</span>
+        )}
+        {people.length > 0 &&
+          (isCredit ? (
+            <CreditPopover
+              lineId={line.id}
+              split={line.split}
+              people={people}
+              onChange={(split) => actions.setLineSplit(line.id, split)}
+            />
+          ) : (
+            <LineSplitPopover
+              lineId={line.id}
+              split={line.split}
+              people={people}
+              onChange={(split) => actions.setLineSplit(line.id, split)}
+            />
+          ))}
       </div>
 
       {line.kind === "metered" && line.meter && (
@@ -186,7 +190,7 @@ function MeterFields({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-muted/60 p-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 min-[560px]:grid-cols-4">
         {meter.input === "usage" ? (
           <DecimalField
             id={inputId}

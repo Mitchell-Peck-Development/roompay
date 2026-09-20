@@ -4,9 +4,11 @@ const BILL = { Rent: "1648", Sewer: "38", Water: "38", Power: "160" }
 
 async function setUpWithBill(page: Page) {
   await page.goto("/app")
-  await page.getByLabel("What should we call this place?").fill("Unit 3012")
-  await page.getByLabel("A nickname for your roommate").fill("Biscuit")
-  await page.getByRole("button", { name: "Start splitting" }).click()
+  await page.getByLabel("Name of the place").fill("Unit 3012")
+  await page.getByRole("button", { name: "Next" }).click()
+  await page.getByLabel("Nickname").fill("Biscuit")
+  await page.getByRole("button", { name: "Next" }).click()
+  await page.getByRole("button", { name: /^Start / }).click()
   for (const [label, amount] of Object.entries(BILL)) {
     await page.getByLabel(label, { exact: true }).fill(amount)
   }

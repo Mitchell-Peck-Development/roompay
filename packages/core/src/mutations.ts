@@ -4,6 +4,7 @@ import type { ISODate, Period } from "./dates"
 import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
 import { newId, randomToken } from "./ids"
 import { lineAmountCents } from "./meter"
+import { computeMonth } from "./split"
 import type {
   AppData,
   Cadence,
@@ -503,6 +504,29 @@ export function ensureCatchup(
   }
   draft.catchups[personId] = record
   return record
+}
+
+/** What one person owes for a saved month, as the Month tab shows it. */
+export function monthShare(month: MonthRecord, personId: string): number {
+  return computeMonth(month).totals[personId] ?? 0
+}
+
+/**
+ * Puts a catch-up away once it's settled: its months go back to billing
+ * normally, and the Month tab stops deferring to it.
+ */
+export function closeCatchup(draft: AppData, personId: string, now = new Date()) {
+  const record = draft.catchups[personId]
+  if (!record) return
+  record.closedAt = now.toISOString()
+  record.updatedAt = now.toISOString()
+}
+
+export function reopenCatchup(draft: AppData, personId: string, now = new Date()) {
+  const record = draft.catchups[personId]
+  if (!record) return
+  delete record.closedAt
+  record.updatedAt = now.toISOString()
 }
 
 export function patchCatchup(

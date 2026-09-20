@@ -85,6 +85,8 @@ export const actions = {
     run((d) => void M.ensureCatchup(d, personId, today)),
   patchCatchup: (personId: string, patch: Parameters<typeof M.patchCatchup>[2]) =>
     run((d) => M.patchCatchup(d, personId, patch)),
+  closeCatchup: (personId: string) => run((d) => M.closeCatchup(d, personId)),
+  reopenCatchup: (personId: string) => run((d) => M.reopenCatchup(d, personId)),
 
   importData(incoming: AppData, mode: "replace" | "merge") {
     const { data, replace } = useStore.getState()

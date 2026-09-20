@@ -36,6 +36,15 @@ export function shareWeights(
       const taken = roommates.reduce((a, b) => a + b, 0)
       return [Math.max(0, BASIS_POINTS - taken), ...roommates]
     }
+    // Evenly among exactly these people. Equal weights, so a credit divides
+    // to the cent instead of leaving a fraction of a percent behind.
+    case "only": {
+      const named = new Set(split.personIds)
+      return [named.has(OWNER) ? 1 : 0, ...personIds.map((id) => (named.has(id) ? 1 : 0))]
+    }
+    // Whoever is on the split this month, except you.
+    case "roommates":
+      return [0, ...personIds.map(() => 1)]
     default:
       // "exclude" — and "default", which callers resolve before getting here.
       return [1, ...personIds.map(() => 0)]

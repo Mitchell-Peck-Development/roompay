@@ -63,6 +63,13 @@ export const itemSplitSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("even") }),
   z.object({ mode: z.literal("percent"), pct: z.record(z.string(), percent) }),
   z.object({ mode: z.literal("exclude") }),
+  /**
+   * Evenly among exactly these people — "owner" for you. Percentages can't
+   * say this: three people at 33.33% leaves a hundredth of a percent behind.
+   */
+  z.object({ mode: z.literal("only"), personIds: z.array(id).max(24) }),
+  /** Evenly among whoever is on the split this month, except you. */
+  z.object({ mode: z.literal("roommates") }),
 ])
 
 export const itemKindSchema = z.enum(["fixed", "variable", "metered"])
@@ -154,6 +161,8 @@ export const catchupRecordSchema = z.object({
   paid: z.array(paidEntrySchema),
   published: publishedSchema.optional(),
   updatedAt: timestamp.optional(),
+  /** Set when the catch-up is done, so its months bill normally again. */
+  closedAt: timestamp.optional(),
 })
 
 export const linkSecretsSchema = z.object({

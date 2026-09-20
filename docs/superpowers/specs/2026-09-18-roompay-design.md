@@ -414,3 +414,27 @@ document starts fresh. What was dropped is reported to the owner, the original i
 A round-trip test builds a document exercising every field the app can write — coverage, due dates, residency,
 meter readings, per-line splits, paid entries, published markers, link secrets, catch-ups — and asserts nothing
 is lost through save and load, which also guards against a field being written but never added to the schema.
+
+## Addendum (2026-09-20): onboarding, catch-up ownership, credits, phone layout
+
+**A catch-up owns its months** (amends §3.4). `catchupPeriods` names them and `coveredByCatchup` answers for a
+person and period; while one is open the Month tab shows the share but defers the billing, so the owner can't
+publish that month to that roommate separately. `computeCatchup` takes the saved months and bills the real
+figures for any month that has amounts, marking each statement `estimated` or not; the working month counts as
+soon as anything is entered. `closeCatchup`/`reopenCatchup` hand the months back. The share payload carries
+`catchup.periods` so the roommate sees what the plan settles.
+
+**Credits are not splits** (amends §3.1). A credit asks where it lands: off the whole bill before the split, or
+off chosen people's shares after it — one roommate, several (divided between them), or every roommate, which
+follows the household. This needed a split mode percentages can't express, so `ItemSplit` gains
+`{ mode: "only", personIds }` (evenly among exactly those people, `"owner"` included if listed) and
+`{ mode: "roommates" }` (everyone on the split except the owner). Both are offered for charges as well.
+
+**Guided onboarding** replaces the single first-run form: name the place, add roommates *with move-in dates*,
+then the rent. A mid-month arrival gets a catch-up set up on the spot rather than having to find the tab.
+
+**Phone layout.** A line row now puts the name and amount on one row and everything about the bill — kind,
+period, due date, split — on its own row beneath, where it has the full width. Date pairs stack below 420px and
+meter fields below 560px. `DateField` replaces every raw date input: a native date input reports half-typed and
+cleared values as empty, and the old controlled fields ignored those, so a date snapped back as you typed and
+couldn't be cleared at all.

@@ -25,6 +25,7 @@ import { Plus } from "lucide-react"
 import * as React from "react"
 import { MoneyInput } from "@/components/common/money-input"
 import { actions } from "@/lib/actions"
+import { CreditFields } from "./credit-editor"
 
 type PersonRef = { personId: string; nickname: string }
 
@@ -35,23 +36,28 @@ export function AddLineDialog({ people }: { people: PersonRef[] }) {
   const [amount, setAmount] = React.useState<number | null>(null)
   const [sign, setSign] = React.useState<"charge" | "credit">("charge")
   const [who, setWho] = React.useState("default")
+  // A credit lands somewhere; a charge is split. They're different questions.
+  const [credit, setCredit] = React.useState<ItemSplit>({ mode: "default" })
 
   function reset() {
     setLabel("")
     setAmount(null)
     setSign("charge")
     setWho("default")
+    setCredit({ mode: "default" })
   }
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!label.trim() || !amount) return
     const split: ItemSplit =
-      who === "default"
-        ? { mode: "default" }
-        : who === "owner"
-          ? { mode: "exclude" }
-          : { mode: "percent", pct: { [who]: 100 } }
+      sign === "credit"
+        ? credit
+        : who === "default"
+          ? { mode: "default" }
+          : who === "owner"
+            ? { mode: "exclude" }
+            : { mode: "only", personIds: [who] }
     actions.addOneOffLine({
       label,
       amountCents: sign === "credit" ? -Math.abs(amount) : Math.abs(amount),
@@ -104,7 +110,14 @@ export function AddLineDialog({ people }: { people: PersonRef[] }) {
             <Label htmlFor="one-off-amount">Amount</Label>
             <MoneyInput id="one-off-amount" value={amount} onCommit={setAmount} />
           </div>
-          {people.length > 0 && (
+          {people.length > 0 && sign === "credit" && (
+            <div className="flex flex-col gap-2">
+              <Label>Where does it come off?</Label>
+              <CreditFields split={credit} people={people} onChange={setCredit} idPrefix="one-off-credit" />
+            </div>
+          )}
+
+          {people.length > 0 && sign === "charge" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="one-off-who">Who does it apply to?</Label>
               <Select value={who} onValueChange={setWho}>
@@ -125,7 +138,17 @@ export function AddLineDialog({ people }: { people: PersonRef[] }) {
           )}
 
           <DialogFooter>
-            <Button type="submit" className="h-10" disabled={!label.trim() || !amount}>
+            <Button
+              type="submit"
+              className="h-10"
+              disabled={
+                !label.trim() ||
+                !amount ||
+                (sign === "credit" &&
+                  credit.mode === "only" &&
+                  credit.personIds.length === 0)
+              }
+            >
               Add to this month
             </Button>
           </DialogFooter>

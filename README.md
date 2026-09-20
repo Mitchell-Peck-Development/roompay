@@ -228,6 +228,23 @@ These can't be covered by automated tests. Try them against a deployed build (su
 - [ ] Owner deletes the link → the roommate's subscribed calendar empties on its next refresh.
 - [ ] iPhone: install to Home Screen, import a backup, and the data is still there after a week away.
 
+## Catch-ups, credits and splits
+
+**A catch-up owns the months it settles.** While it's open, that roommate's part-month (and the next, if it's
+included) is billed through the catch-up alone: the Month tab shows their share but hands the billing over, so
+they're never asked for the same month twice. Estimates give way to the real figures as soon as a month has
+amounts in it. Marking it settled hands those months back to the usual flow.
+
+**A credit isn't a split.** Money coming back only has two sensible destinations, so that's what it asks:
+
+| | |
+| --- | --- |
+| **Off the whole bill** | Before the split — the total drops and everyone's share drops with it. |
+| **Off someone's share** | After the split — the full amount comes off the people you pick, and yours doesn't move. One roommate, several (shared between them), or every roommate, which follows the household as people come and go. |
+
+That needs a split mode percentages can't express — *evenly among exactly these people* — since three people at
+33.33% leaves a hundredth of a percent on you. It's available for charges too, as "Only some of us".
+
 ## History as a spreadsheet
 
 **History → Export CSV** writes every saved month: one row per bill line, then a `Total` row, with a column for

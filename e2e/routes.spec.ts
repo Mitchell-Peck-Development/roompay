@@ -12,7 +12,7 @@ test("the landing page is at /, the app is at /app", async ({ page }) => {
 
   await page.getByRole("link", { name: "Open RoomPay" }).first().click()
   await expect(page).toHaveURL(/\/app$/)
-  await expect(page.getByLabel("What should we call this place?")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "What should we call this place?" })).toBeVisible()
 })
 
 test("the installed app starts at /app and keeps its identity", async ({ page }) => {

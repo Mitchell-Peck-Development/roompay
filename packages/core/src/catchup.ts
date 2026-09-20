@@ -11,6 +11,8 @@ import {
 import type { Cents } from "./money"
 import { type Plan, scheduleEvenly } from "./plans"
 import type {
+  AppData,
+  MonthRecord,
   CatchupRecord,
   ItemTemplate,
   MonthLine,
@@ -41,6 +43,8 @@ export type CatchupStatement = {
   period: Period
   lines: CatchupStatementLine[]
   shareCents: Cents
+  /** True while this is still a guess — no month saved for it yet. */
+  estimated: boolean
 }
 
 export type CatchupResult = {
@@ -57,6 +61,26 @@ export type CatchupResult = {
 }
 
 export const CATCHUP_PLAN_KEY = "catchup"
+
+/**
+ * The months a catch-up settles. While it's open these are billed through the
+ * catch-up alone, so a roommate is never asked for the same month twice.
+ */
+export function catchupPeriods(record: CatchupRecord): Period[] {
+  const first = periodOf(record.moveIn)
+  return record.includeNextMonth ? [first, nextPeriod(first)] : [first]
+}
+
+/** Whether this person's share of `period` belongs to an open catch-up. */
+export function coveredByCatchup(
+  data: Pick<AppData, "catchups">,
+  personId: string,
+  period: Period
+): boolean {
+  const record = data.catchups[personId]
+  if (!record || record.closedAt) return false
+  return catchupPeriods(record).includes(period)
+}
 
 /** First payment on move-in day, caught up by the 1st of the next month. */
 export function defaultCatchupDates(moveIn: ISODate): {
@@ -96,8 +120,10 @@ export function computeCatchup(input: {
   items: ItemTemplate[]
   split: Split
   people: Person[]
+  /** Saved months. Any month that's been saved bills for real, not by guess. */
+  months?: MonthRecord[]
 }): CatchupResult {
-  const { record, items, split, people } = input
+  const { record, items, split, people, months = [] } = input
   const enabled = items.filter((t) => t.enabled)
 
   const participants: Participant[] = people
@@ -123,15 +149,20 @@ export function computeCatchup(input: {
   })
 
   const statements = periods.map((p): CatchupStatement => {
-    const month = computeMonth({
-      lines: syntheticLines(p, enabled, record.estimates, true),
-      split,
-      participants,
-    })
+    // Once a month is saved it bills for real; until then it's an estimate.
+    const saved = months.find((m) => m.period === p)
+    const month = saved
+      ? computeMonth(saved)
+      : computeMonth({
+          lines: syntheticLines(p, enabled, record.estimates, true),
+          split,
+          participants,
+        })
     return {
       period: p,
+      estimated: !saved,
       lines: month.lines.map((l) => ({
-        templateId: l.line.id,
+        templateId: l.line.templateId ?? l.line.id,
         label: l.line.label,
         fullCents: l.amountCents,
         shareCents: l.shares[record.personId] ?? 0,

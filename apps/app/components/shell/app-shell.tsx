@@ -87,7 +87,7 @@ export function AppShell() {
 
       <main className="flex flex-col gap-4">
         {tab === "bills" && <BillsTab />}
-        {tab === "month" && <MonthTab />}
+        {tab === "month" && <MonthTab onOpenCatchup={() => setTab("catchup")} />}
         {tab === "catchup" && <CatchupTab />}
         {tab === "history" && <HistoryTab onOpen={() => setTab("month")} />}
         {tab === "setup" && <SetupTab />}

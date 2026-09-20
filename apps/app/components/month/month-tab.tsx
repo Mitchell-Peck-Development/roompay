@@ -1,12 +1,13 @@
 "use client"
 
-import { buildMonthlyPayload, buildPlans, computeMonth } from "@workspace/core"
+import { buildMonthlyPayload, buildPlans, computeMonth, coveredByCatchup } from "@workspace/core"
 import * as React from "react"
 import { RoommateSwitcher } from "@/components/common/roommate-switcher"
 import { SectionCard } from "@/components/common/section-card"
 import { actions } from "@/lib/actions"
 import { useData } from "@/lib/store"
 import { AddLineDialog } from "./add-line-dialog"
+import { CoveredByCatchup } from "./covered-by-catchup"
 import { LedgerSummary } from "./ledger-summary"
 import { LineRow } from "./line-row"
 import { MonthHeader } from "./month-header"
@@ -14,7 +15,7 @@ import { PlanCards } from "./plan-cards"
 import { ShareCard } from "./share-card"
 import { SplitEditor } from "./split-editor"
 
-export function MonthTab() {
+export function MonthTab({ onOpenCatchup }: { onOpenCatchup(): void }) {
   const data = useData()
   const month = data.current
   const people = month.participants
@@ -24,13 +25,15 @@ export function MonthTab() {
   const person = people.find((p) => p.personId === selected) ?? people[0]
 
   const shareCents = person ? (computed.totals[person.personId] ?? 0) : 0
+  // While a catch-up settles this month for them, it does the billing.
+  const covered = person ? coveredByCatchup(data, person.personId, month.period) : false
   const plans = React.useMemo(
     () => buildPlans(shareCents, data.cadences, month.period),
     [shareCents, data.cadences, month.period]
   )
   const payload = React.useMemo(
     () =>
-      person && shareCents > 0
+      person && shareCents > 0 && !covered
         ? buildMonthlyPayload({
             month,
             personId: person.personId,
@@ -38,7 +41,7 @@ export function MonthTab() {
             currency: data.household.currency,
           })
         : null,
-    [month, person, shareCents, data.cadences, data.household.currency]
+    [month, person, shareCents, covered, data.cadences, data.household.currency]
   )
 
   return (
@@ -88,24 +91,36 @@ export function MonthTab() {
         <>
           <RoommateSwitcher people={people} value={person.personId} onChange={setSelected} />
 
-          <SectionCard
-            title="Payment options"
-            description={`Ways for ${person.nickname || "your roommate"} to pay across the month instead of one lump sum.`}
-          >
-            <PlanCards plans={plans} shareCents={shareCents} />
-          </SectionCard>
+          {covered ? (
+            <CoveredByCatchup
+              nickname={person.nickname}
+              period={month.period}
+              shareCents={shareCents}
+              currency={data.household.currency}
+              onOpenCatchup={onOpenCatchup}
+            />
+          ) : (
+            <>
+              <SectionCard
+                title="Payment options"
+                description={`Ways for ${person.nickname || "your roommate"} to pay across the month instead of one lump sum.`}
+              >
+                <PlanCards plans={plans} shareCents={shareCents} />
+              </SectionCard>
 
-          <ShareCard
-            key={`${month.id}:${person.personId}`}
-            personId={person.personId}
-            nickname={person.nickname}
-            statement={{ kind: "monthly", monthId: month.id }}
-            period={month.period}
-            payload={payload}
-            published={month.published[person.personId]}
-            paid={month.paid[person.personId] ?? []}
-            beforePublish={actions.saveCurrent}
-          />
+              <ShareCard
+                key={`${month.id}:${person.personId}`}
+                personId={person.personId}
+                nickname={person.nickname}
+                statement={{ kind: "monthly", monthId: month.id }}
+                period={month.period}
+                payload={payload}
+                published={month.published[person.personId]}
+                paid={month.paid[person.personId] ?? []}
+                beforePublish={actions.saveCurrent}
+              />
+            </>
+          )}
         </>
       ) : (
         <SectionCard title="Nobody to split with" description="Add a roommate in Setup to see their share and payment options.">

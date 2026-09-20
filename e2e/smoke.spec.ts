@@ -11,11 +11,15 @@ const BILL = {
   Power: "160",
 }
 
-async function setUp(page: Page, roommate = "Biscuit") {
+/** Walks the three onboarding steps. `movedIn` sets a mid-month arrival. */
+async function setUp(page: Page, roommate = "Biscuit", movedIn?: string) {
   await page.goto("/app")
-  await page.getByLabel("What should we call this place?").fill("Unit 3012")
-  await page.getByLabel("A nickname for your roommate").fill(roommate)
-  await page.getByRole("button", { name: "Start splitting" }).click()
+  await page.getByLabel("Name of the place").fill("Unit 3012")
+  await page.getByRole("button", { name: "Next" }).click()
+  await page.getByLabel("Nickname").fill(roommate)
+  if (movedIn) await page.getByLabel(/Moved in/).fill(movedIn)
+  await page.getByRole("button", { name: "Next" }).click()
+  await page.getByRole("button", { name: /^Start / }).click()
   await expect(page.getByText("This month's bill")).toBeVisible()
 }
 
@@ -151,4 +155,68 @@ test("history exports as a spreadsheet", async ({ page }, testInfo) => {
   // Rent covers the month it's billed in; the CSV carries the window.
   expect(rent).toMatch(/,\d{4}-\d{2}-01,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-01,USD,/)
   expect(rows.at(-1)).toContain(",Total,,,,,,,USD,1910.00,955.00,955.00,0.00,")
+})
+
+test("a mid-month arrival gets a catch-up, and that month is never billed twice", async ({ page }) => {
+  // Onboarding asks when they moved in, and offers the catch-up itself.
+  const today = new Date()
+  const movedIn = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-14`
+  await setUp(page, "Biscuit", movedIn)
+  await enterBill(page)
+
+  // The month shows their share, but hands the billing to the catch-up.
+  await expect(page.getByText("Biscuit's catch-up covers this month")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Publish & share" })).toBeHidden()
+
+  await page.getByRole("button", { name: "Open the catch-up" }).click()
+  await expect(page.getByText(/billed here, not on the Month tab/)).toBeVisible()
+  // This month's real bill replaces the estimate as soon as it's entered.
+  await expect(page.getByText("actual bill").first()).toBeVisible()
+
+  // One statement for the roommate, covering both months.
+  await page.getByRole("button", { name: "Publish & share" }).click()
+  const url = await page.getByTestId("share-url").inputValue()
+  const roommate = await newDevice(browserOf(page))
+  await roommate.goto(url)
+  await expect(roommate.getByText("Move-in catch-up")).toBeVisible()
+
+  // Settling it hands the months back to the usual flow.
+  await page.getByRole("button", { name: "Mark the catch-up settled" }).click()
+  await page.getByRole("navigation").first().getByRole("button", { name: "Month" }).click()
+  await expect(page.getByRole("button", { name: /Publish|Send/ }).first()).toBeVisible()
+})
+
+/** The browser behind a page, so a test can open a second device. */
+function browserOf(page: Page): Browser {
+  return page.context().browser()!
+}
+
+test("a credit comes off the bill or off one person, and says which", async ({ page }) => {
+  await setUp(page)
+  await enterBill(page)
+  await expect(page.getByTestId("total-bill")).toHaveText("$1,910.00")
+  await expect(page.getByTestId("share-Biscuit")).toHaveText("$955.00")
+
+  // A credit off the whole bill: the total drops, so both sides drop half.
+  await page.getByRole("button", { name: "Add one-time item" }).click()
+  let dialog = page.getByRole("dialog")
+  await dialog.getByRole("radio", { name: "Credit" }).click()
+  await dialog.getByLabel("What is it?").fill("Blender")
+  await dialog.getByLabel("Amount").fill("50")
+  await expect(dialog.getByRole("radio", { name: /Off the whole bill/ })).toBeChecked()
+  await dialog.getByRole("button", { name: "Add to this month" }).click()
+
+  await expect(page.getByTestId("total-bill")).toHaveText("$1,860.00")
+  await expect(page.getByTestId("share-Biscuit")).toHaveText("$930.00")
+  await expect(page.getByRole("button", { name: "Off the whole bill" })).toBeVisible()
+
+  // Aimed at Biscuit instead: the full $50 comes off her side, not yours.
+  await page.getByRole("button", { name: "Off the whole bill" }).click()
+  await page.getByRole("radio", { name: /Off someone's share/ }).click()
+  await page.getByRole("checkbox", { name: /Biscuit/ }).check()
+  await page.keyboard.press("Escape")
+
+  await expect(page.getByTestId("share-Biscuit")).toHaveText("$905.00")
+  await expect(page.getByTestId("total-bill")).toHaveText("$1,860.00")
+  await expect(page.getByRole("button", { name: "Off Biscuit's share" })).toBeVisible()
 })

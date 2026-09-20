@@ -71,6 +71,10 @@ export const sharePayloadSchema = z
         daysInMonth: z.number().int().min(28).max(31),
         stubShareCents: cents,
         nextMonthShareCents: cents,
+        /** The months this plan settles, so nothing is billed twice. */
+        periods: z.array(periodSchema).max(6).optional(),
+        /** True while any of it is still an estimate. */
+        estimated: z.boolean().optional(),
       })
       .optional(),
   })
@@ -192,6 +196,8 @@ export function buildCatchupPayload(args: {
       daysInMonth: result.daysInMonth,
       stubShareCents: result.stubShareCents,
       nextMonthShareCents: result.nextMonthShareCents,
+      periods: result.statements.map((s) => s.period),
+      estimated: result.statements.some((s) => s.estimated),
     },
   }
 }

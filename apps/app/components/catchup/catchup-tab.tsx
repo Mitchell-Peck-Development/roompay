@@ -4,22 +4,24 @@ import {
   type CatchupResult,
   addDays,
   buildCatchupPayload,
+  catchupPeriods,
   computeCatchup,
   formatLongDate,
   formatPeriod,
   formatWindow,
-  isISODate,
   isOffset,
   itemsWithRecentDefaults,
+  lineAmountCents,
   maxOffsetMonths,
   periodOf,
   todayISO,
 } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { DateField } from "@/components/common/date-field"
 import { Label } from "@workspace/ui/components/label"
 import { Switch } from "@workspace/ui/components/switch"
-import { History, Minus, Plus } from "lucide-react"
+import { CheckCheck, History, Minus, Plus } from "lucide-react"
 import * as React from "react"
 import { Amount } from "@/components/common/amount"
 import { MoneyInput } from "@/components/common/money-input"
@@ -47,12 +49,23 @@ export function CatchupTab() {
     if (person && !record) actions.ensureCatchup(person.personId, todayISO())
   }, [person, record])
 
-  // Bills that vary start from whatever was last entered for them.
-  const items = React.useMemo(() => itemsWithRecentDefaults(data), [data])
-  const result = React.useMemo(
-    () => (record ? computeCatchup({ record, items, split: data.split, people: data.people }) : null),
-    [record, items, data.split, data.people]
-  )
+  // Bills that vary start from whatever was last entered for them. These are
+  // cheap sums over one household's data, and the whole document is replaced
+  // on every edit, so they're left to the compiler rather than memoised here.
+  const items = itemsWithRecentDefaults(data)
+  // The month being worked on counts as real as soon as it has figures in it,
+  // so the catch-up stops calling this month's bill an estimate. An empty one
+  // would only report zeros, so it waits until something is entered.
+  const entered = data.current.lines.some((line) => lineAmountCents(line) !== null)
+  const result = record
+    ? computeCatchup({
+        record,
+        items,
+        split: data.split,
+        people: data.people,
+        months: entered ? [data.current, ...data.months] : data.months,
+      })
+    : null
 
   if (!person) {
     return (
@@ -64,10 +77,14 @@ export function CatchupTab() {
   if (!record || !result) return null
 
   const who = person.nickname || "your roommate"
+  const periods = catchupPeriods(record)
+  const settled = Boolean(record.closedAt)
+  const months = periods.map((p) => formatPeriod(p))
+  const monthList = months.length > 1 ? `${months.slice(0, -1).join(", ")} and ${months.at(-1)}` : months[0]
   const offsetMonths = maxOffsetMonths(items)
   const patch = (next: Parameters<typeof actions.patchCatchup>[1]) => actions.patchCatchup(person.personId, next)
-  const setDate = (key: "moveIn" | "start" | "end") => (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isISODate(e.target.value)) patch({ [key]: e.target.value })
+  const setDate = (key: "moveIn" | "start" | "end") => (value: string | null) => {
+    if (value) patch({ [key]: value })
   }
   const payload =
     result.combinedCents > 0
@@ -78,14 +95,37 @@ export function CatchupTab() {
     <>
       <RoommateSwitcher people={people} value={person.personId} onChange={setSelected} />
 
+      <aside
+        className={`rounded-xl p-4 text-sm ${settled ? "bg-muted text-muted-foreground" : "bg-accent text-accent-foreground"}`}
+      >
+        {settled ? (
+          <>
+            <p className="font-semibold">This catch-up is settled.</p>
+            <p className="mt-1 leading-relaxed">
+              {monthList} {months.length > 1 ? "bill" : "bills"} normally again on the Month tab.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-semibold">
+              {monthList} {months.length > 1 ? "are" : "is"} billed here, not on the Month tab
+            </p>
+            <p className="mt-1 leading-relaxed">
+              {who} gets one plan covering {months.length > 1 ? "both months" : "it"}, so they&apos;re never asked
+              for the same month twice. Their share still shows in each month&apos;s ledger.
+            </p>
+          </>
+        )}
+      </aside>
+
       <SectionCard
         title="Move-in stub period"
         description="Bills each item against the service it pays for, not the month it lands in — so a utility billed in arrears skips the first statement — then smooths the lot into one plan instead of a small charge now and a big one right after."
       >
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 min-[420px]:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="move-in">Move-in date</Label>
-            <Input id="move-in" type="date" className="tabular h-10" value={record.moveIn} onChange={setDate("moveIn")} />
+            <DateField id="move-in" value={record.moveIn} onChange={setDate("moveIn")} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="days-occupied">Days occupied that month</Label>
@@ -178,22 +218,20 @@ export function CatchupTab() {
         title="Smoothed catch-up plan"
         description="Equal installments, evenly spaced between the two dates."
       >
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 min-[420px]:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="catchup-start">First payment</Label>
-            <Input id="catchup-start" type="date" className="tabular h-10" value={record.start} onChange={setDate("start")} />
+            <DateField id="catchup-start" value={record.start} onChange={setDate("start")} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="catchup-end">Caught up by</Label>
-            <Input
+            <DateField
               id="catchup-end"
-              type="date"
-              className="tabular h-10"
+              value={record.end}
+              onChange={setDate("end")}
               min={record.start}
               // Share links only hold schedules that finish within a year of the move-in month.
               max={addDays(`${periodOf(record.moveIn)}-01`, 365)}
-              value={record.end}
-              onChange={setDate("end")}
             />
           </div>
         </div>
@@ -247,6 +285,21 @@ export function CatchupTab() {
         </table>
       </SectionCard>
 
+      <SectionCard
+        title="Once they've paid it off"
+        description="Settling the catch-up hands its months back to the Month tab, so everything after it is billed the usual way."
+      >
+        <Button
+          variant={settled ? "outline" : "default"}
+          className="h-10 self-start"
+          onClick={() =>
+            settled ? actions.reopenCatchup(person.personId) : actions.closeCatchup(person.personId)
+          }
+        >
+          <CheckCheck /> {settled ? "Reopen the catch-up" : "Mark the catch-up settled"}
+        </Button>
+      </SectionCard>
+
       <ShareCard
         key={`catchup:${person.personId}`}
         personId={person.personId}
@@ -271,14 +324,23 @@ function Statements({ result, who }: { result: CatchupResult; who: string }) {
     <div className="mt-5 flex flex-col gap-3">
       {result.statements.map((statement, index) => (
         <div key={statement.period} className="overflow-hidden rounded-xl border">
-          <div className="flex items-baseline justify-between gap-4 border-b bg-muted/50 px-4 py-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b bg-muted/50 px-4 py-2">
             <h4 className="text-sm font-semibold">
               {formatPeriod(statement.period)}
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 {index === 0 ? "first statement" : "next statement"}
               </span>
             </h4>
-            <Amount cents={statement.shareCents} className="font-semibold" />
+            <span className="flex items-baseline gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${
+                  statement.estimated ? "bg-warning-soft text-warning" : "bg-accent text-accent-foreground"
+                }`}
+              >
+                {statement.estimated ? "estimate" : "actual bill"}
+              </span>
+              <Amount cents={statement.shareCents} className="font-semibold" />
+            </span>
           </div>
           <div className="flex flex-col px-4 py-1">
             {statement.lines.map((line) => (

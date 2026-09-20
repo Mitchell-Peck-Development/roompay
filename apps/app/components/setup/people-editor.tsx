@@ -1,8 +1,9 @@
 "use client"
 
-import { type Person, canRemovePerson, isISODate } from "@workspace/core"
+import { type Person, canRemovePerson } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { DateField } from "@/components/common/date-field"
 import { Label } from "@workspace/ui/components/label"
 import { Archive, ArchiveRestore, CalendarDays, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
@@ -91,11 +92,8 @@ export function PeopleEditor() {
  */
 function Residency({ person }: { person: Person }) {
   const [open, setOpen] = React.useState(Boolean(person.from || person.to))
-  const set = (key: "from" | "to") => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
-    if (value === "") actions.setPersonResidency(person.id, { [key]: null })
-    else if (isISODate(value)) actions.setPersonResidency(person.id, { [key]: value })
-  }
+  const set = (key: "from" | "to") => (value: string | null) =>
+    actions.setPersonResidency(person.id, { [key]: value })
 
   if (!open) {
     return (
@@ -111,33 +109,26 @@ function Residency({ person }: { person: Person }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/60 p-3">
+    <div className="grid gap-3 rounded-lg bg-muted/60 p-3 min-[380px]:grid-cols-2">
       <div className="flex flex-col gap-1">
         <Label htmlFor={`from-${person.id}`} className="text-xs text-muted-foreground">
           Moved in
         </Label>
-        <Input
-          id={`from-${person.id}`}
-          type="date"
-          className="tabular h-10"
-          value={person.from ?? ""}
-          onChange={set("from")}
-        />
+        <DateField id={`from-${person.id}`} value={person.from ?? ""} clearable onChange={set("from")} />
       </div>
       <div className="flex flex-col gap-1">
         <Label htmlFor={`to-${person.id}`} className="text-xs text-muted-foreground">
           Moving out
         </Label>
-        <Input
+        <DateField
           id={`to-${person.id}`}
-          type="date"
-          className="tabular h-10"
-          min={person.from}
           value={person.to ?? ""}
+          clearable
+          min={person.from}
           onChange={set("to")}
         />
       </div>
-      <p className="col-span-2 text-xs text-muted-foreground">
+      <p className="text-xs min-[380px]:col-span-2 text-muted-foreground">
         Leave these empty if they&apos;ve always been here. Otherwise every bill is weighted by
         the days of the period it covers that they were — including bills that arrive a month late.
       </p>

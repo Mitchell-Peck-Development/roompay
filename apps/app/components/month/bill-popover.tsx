@@ -8,12 +8,11 @@ import {
   coverageWindow,
   formatPeriod,
   formatWindow,
-  isISODate,
   lineAmountCents,
   meterDetail,
   periodOf,
 } from "@workspace/core"
-import { Input } from "@workspace/ui/components/input"
+import { DateField } from "@/components/common/date-field"
 import { Label } from "@workspace/ui/components/label"
 import {
   Popover,
@@ -71,12 +70,9 @@ export function BillPopover({
     preset?.spanMonths === 1 && preset.offsetMonths <= 2 ? String(preset.offsetMonths) : ""
   const dueElsewhere = Boolean(line.dueDate && periodOf(line.dueDate) !== period)
 
-  const setDate =
-    (key: keyof ServiceWindow) => (event: React.ChangeEvent<HTMLInputElement>) => {
-      if (isISODate(event.target.value)) {
-        actions.setLineCoverage(line.id, { ...covers, [key]: event.target.value })
-      }
-    }
+  const setDate = (key: keyof ServiceWindow) => (value: string | null) => {
+    if (value) actions.setLineCoverage(line.id, { ...covers, [key]: value })
+  }
 
   return (
     <Popover>
@@ -140,29 +136,21 @@ export function BillPopover({
             ))}
           </ToggleGroup>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2 min-[380px]:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor={`covers-start-${line.id}`} className="text-xs text-muted-foreground">
                 From
               </Label>
-              <Input
-                id={`covers-start-${line.id}`}
-                type="date"
-                className="tabular h-9"
-                value={covers.start}
-                onChange={setDate("start")}
-              />
+              <DateField id={`covers-start-${line.id}`} value={covers.start} onChange={setDate("start")} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`covers-end-${line.id}`} className="text-xs text-muted-foreground">
                 To
               </Label>
-              <Input
+              <DateField
                 id={`covers-end-${line.id}`}
-                type="date"
-                className="tabular h-9"
-                min={covers.start}
                 value={covers.end}
+                min={covers.start}
                 onChange={setDate("end")}
               />
             </div>
@@ -176,14 +164,12 @@ export function BillPopover({
           <p className="text-xs text-muted-foreground">
             Any date — a bill billed now can fall due next month.
           </p>
-          <Input
+          <DateField
             id={`due-${line.id}`}
-            type="date"
-            className="tabular mt-1 h-9"
+            className="mt-1"
             value={line.dueDate ?? ""}
-            onChange={(e) =>
-              actions.setLineDueDate(line.id, isISODate(e.target.value) ? e.target.value : null)
-            }
+            clearable
+            onChange={(value) => actions.setLineDueDate(line.id, value)}
           />
           {dueElsewhere && (
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
