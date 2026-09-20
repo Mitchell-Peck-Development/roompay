@@ -146,6 +146,14 @@ These can't be covered by automated tests. Try them against a deployed build (su
 - [ ] Owner deletes the link → the roommate's subscribed calendar empties on its next refresh.
 - [ ] iPhone: install to Home Screen, import a backup, and the data is still there after a week away.
 
+## History as a spreadsheet
+
+**History → Export CSV** writes every saved month: one row per bill line, then a `Total` row, with a column for
+the bill amount, your share, and each person's share, what they've paid and when that month was shared. Move-in
+catch-ups come along as their own rows (`Prorated`, `Next month`, `Total`). Months run oldest first, amounts are
+plain numbers so they add up, and the file carries a BOM so Excel reads it as UTF-8. It's a report, not a backup —
+it can't be imported.
+
 ## Local data and backups
 
 The owner's data is one JSON document in `localStorage` (`roompay:v1`), validated on load. If it can't be read it

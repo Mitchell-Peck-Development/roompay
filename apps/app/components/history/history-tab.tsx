@@ -1,6 +1,13 @@
 "use client"
 
-import { type MonthRecord, computeMonth, formatPeriod, isDirty } from "@workspace/core"
+import {
+  type MonthRecord,
+  computeMonth,
+  formatPeriod,
+  historyCsv,
+  historyCsvFilename,
+  isDirty,
+} from "@workspace/core"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,11 +20,13 @@ import {
 } from "@workspace/ui/components/alert-dialog"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
-import { FolderOpen, Trash2 } from "lucide-react"
+import { FolderOpen, Sheet, Trash2 } from "lucide-react"
 import * as React from "react"
+import { toast } from "sonner"
 import { Amount } from "@/components/common/amount"
 import { SectionCard } from "@/components/common/section-card"
 import { actions } from "@/lib/actions"
+import { saveFile } from "@/lib/download"
 import { useData } from "@/lib/store"
 
 type Pending = { action: "open" | "delete"; month: MonthRecord }
@@ -40,6 +49,16 @@ export function HistoryTab({ onOpen }: { onOpen(): void }) {
     else open(month)
   }
 
+  async function exportCsv() {
+    const now = new Date()
+    const outcome = await saveFile(
+      historyCsvFilename(now),
+      historyCsv(data),
+      "text/csv;charset=utf-8"
+    )
+    if (outcome === "downloaded") toast.success("Spreadsheet saved to your downloads.")
+  }
+
   function confirm() {
     if (!pending) return
     if (pending.action === "open") open(pending.month)
@@ -50,12 +69,18 @@ export function HistoryTab({ onOpen }: { onOpen(): void }) {
   return (
     <SectionCard
       title="Saved months"
-      description="Snapshots you chose to keep. They live on this device — export a backup from Setup to keep a copy elsewhere."
+      description="Months you chose to keep, on this device. Export them as a spreadsheet, or a full backup from Setup."
+      action={
+        <Button variant="outline" className="h-9" disabled={data.months.length === 0} onClick={exportCsv}>
+          <Sheet /> Export CSV
+        </Button>
+      }
     >
       {data.months.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Nothing saved yet. On the Month tab, press <strong>Save month</strong> to keep a titled copy here.
-          Publishing a month saves it too.
+          Publishing a month saves it too. Once there&apos;s something here, <strong>Export CSV</strong> opens it
+          all in a spreadsheet.
         </p>
       ) : (
         <ul className="flex flex-col gap-2.5">

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { type Browser, type Page, expect, test } from "@playwright/test"
 
 // The artifact's own example month: $1,910 split evenly two ways.
@@ -125,4 +126,25 @@ test("a backup moves everything to another device", async ({ page, browser }, te
   await expect(other.getByTestId("share-3012-B")).toHaveText("$955.00")
   await other.getByRole("navigation").first().getByRole("button", { name: "History" }).click()
   await expect(other.getByText("$1,910.00")).toBeVisible()
+})
+
+test("history exports as a spreadsheet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "file download flow is covered on desktop")
+  await setUp(page, "Biscuit")
+  await enterBill(page)
+  await page.getByRole("button", { name: "Save month" }).click()
+  await page.getByRole("navigation").first().getByRole("button", { name: "History" }).click()
+
+  const downloading = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Export CSV" }).click()
+  const download = await downloading
+  expect(download.suggestedFilename()).toMatch(/^roompay-history-\d{4}-\d{2}-\d{2}\.csv$/)
+
+  const csv = await readFile((await download.path())!, "utf8")
+  const [header, ...rows] = csv.replace(/^\uFEFF/, "").trim().split("\r\n")
+  expect(header).toBe(
+    "Month,Statement,Row,Item,Type,Detail,Currency,Bill,You,Biscuit,Biscuit received,Biscuit shared on"
+  )
+  expect(rows.some((r) => r.includes(",Item,Rent,fixed,,USD,1648.00,824.00,824.00,,"))).toBe(true)
+  expect(rows.at(-1)).toContain(",Total,,,,USD,1910.00,955.00,955.00,0.00,")
 })
