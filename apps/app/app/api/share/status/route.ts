@@ -1,3 +1,4 @@
+import { type PublishedPlan, publishedPlans } from "@workspace/core"
 import { handle, json } from "@/lib/server/http"
 import { viewLink } from "@/lib/server/rp/service"
 import { statusBody } from "@/lib/server/schemas"
@@ -15,6 +16,8 @@ export type LinkStatus =
         receivedCents: number
         revision: number
         updatedAt: string
+        /** The schedules as published — the owner's device reconciles a corrected bill against them. */
+        plans: PublishedPlan[]
       }[]
     }
   | { ok: false }
@@ -40,6 +43,7 @@ export async function POST(request: Request) {
               receivedCents: s.receivedCents,
               revision: s.revision,
               updatedAt: s.updatedAt,
+              plans: publishedPlans(s.payload),
             })),
           },
         ]

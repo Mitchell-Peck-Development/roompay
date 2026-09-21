@@ -4,6 +4,7 @@ import {
   createInitialData,
   lastDueOn,
   newMonth,
+  publishedPlans,
   randomToken,
 } from "@workspace/core"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
@@ -109,6 +110,8 @@ describe("share API", () => {
       preferredPlan: null,
       statements: [{ period: PERIOD, kind: "monthly", chosenPlan: null, revision: 2 }],
     })
+    // The schedules as published, so the owner's device can reconcile a corrected bill against them.
+    expect(body.links[token].statements[0].plans).toEqual(publishedPlans(octoberPayload()))
     expect(JSON.stringify(body)).not.toContain(writeKey)
 
     const tooMany = Array.from({ length: 13 }, () => randomToken())
