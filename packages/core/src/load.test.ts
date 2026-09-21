@@ -152,6 +152,21 @@ describe("parseAppData", () => {
     expect(result.data.meta.tipNudgeDismissedAt).toBe("2026-09-20T09:00:00.000Z")
   })
 
+  it("drops a damaged copy of a published schedule without losing its month", () => {
+    const raw = stored(saved())
+    const person = raw.people[0].id
+    raw.months[0].published[person] = {
+      at: "2026-09-19T00:00:00.000Z",
+      hash: "abc",
+      plans: [{ key: "", payments: "lots" }],
+    }
+
+    const result = parseAppData(raw, now)
+    expect(result.fresh).toBe(false)
+    expect(result.data.months).toHaveLength(2)
+    expect(result.data.months[0]!.published[person]).toEqual({ at: "2026-09-19T00:00:00.000Z", hash: "abc" })
+  })
+
   it("starts fresh only when there's nothing to read", () => {
     for (const raw of [null, "nonsense", 42, []]) {
       const result = parseAppData(raw, now)
