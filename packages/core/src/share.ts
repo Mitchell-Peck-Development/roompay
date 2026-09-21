@@ -3,11 +3,14 @@ import type { CatchupResult } from "./catchup"
 import { formatWindow, residentDays, windowDays } from "./coverage"
 import { type ISODate, periodOf } from "./dates"
 import { meterDetail } from "./meter"
+import { paidTotal } from "./paid"
 import { type Plan, buildPlans } from "./plans"
+import { reconcilePlans } from "./reconcile"
 import {
   type Cadence,
   type CatchupRecord,
   type MonthRecord,
+  type PublishedPlan,
   isoDateSchema,
   periodSchema,
 } from "./schema"
@@ -136,7 +139,12 @@ export function buildMonthlyPayload(args: {
     })
 
   const shareCents = computed.totals[personId] ?? 0
-  const plans = buildPlans(shareCents, cadences, month.period)
+  // Once they've started paying, a corrected bill only moves what they haven't paid yet.
+  const plans = reconcilePlans(
+    buildPlans(shareCents, cadences, month.period),
+    month.published[personId]?.plans,
+    paidTotal(month.paid[personId] ?? [])
+  )
   const defaultPlan =
     plans.find((p) => p.key === defaultPlanKey)?.key ?? plans[0]?.key ?? ""
 
@@ -230,6 +238,14 @@ function cyrb53(text: string): string {
 
 export function payloadHash(payload: SharePayload): string {
   return cyrb53(stableStringify(payload))
+}
+
+/** A payload's schedules, as the owner's device keeps them to reconcile against later. */
+export function publishedPlans(payload: SharePayload): PublishedPlan[] {
+  return payload.plans.map((plan) => ({
+    key: plan.key,
+    payments: plan.payments.map(({ date, amountCents }) => ({ date, amountCents })),
+  }))
 }
 
 /** The latest due date across every plan — drives link expiry. */

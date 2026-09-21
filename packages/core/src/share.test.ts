@@ -8,6 +8,7 @@ import {
   lastDueOn,
   payloadHash,
   pickPlan,
+  publishedPlans,
   sharePayloadSchema,
 } from "./share"
 
@@ -78,6 +79,33 @@ describe("buildMonthlyPayload", () => {
     expect(sharePayloadSchema.safeParse({ ...p, plans: [] }).success).toBe(false)
     expect(sharePayloadSchema.safeParse({ ...p, defaultPlan: "missing" }).success).toBe(false)
     expect(sharePayloadSchema.safeParse({ ...p, shareCents: 1.5 }).success).toBe(false)
+  })
+
+  // What the owner last published, and a first payment received against it.
+  const publishedAfterPaying = (paidCents: number): Pick<MonthRecord, "published" | "paid"> => ({
+    published: { a: { at: "2026-10-02T00:00:00.000Z", hash: payloadHash(p), plans: publishedPlans(p) } },
+    paid: { a: [{ id: "p1", amountCents: paidCents, date: "2026-10-01" }] },
+  })
+  const firstOfHalf = p.plans.find((x) => x.key === "half")!.payments[0]!.amountCents
+
+  it("keeps what they've paid when a bill is corrected after publishing", () => {
+    const corrected: MonthRecord = {
+      ...month,
+      ...publishedAfterPaying(firstOfHalf),
+      lines: month.lines.map((l) => (l.id === "1" ? { ...l, amountCents: 160000 } : l)),
+    }
+    const after = buildMonthlyPayload({ month: corrected, personId: "a", cadences: defaultCadences(), currency: "USD" })
+    const half = after.plans.find((x) => x.key === "half")!
+
+    expect(after.shareCents).toBeGreaterThan(p.shareCents)
+    expect(half.payments[0]!.amountCents).toBe(firstOfHalf)
+    expect(half.payments.reduce((sum, x) => sum + x.amountCents, 0)).toBe(after.shareCents)
+  })
+
+  it("publishes exactly the same statement when only a payment has come in", () => {
+    const paying: MonthRecord = { ...month, ...publishedAfterPaying(firstOfHalf) }
+    const again = buildMonthlyPayload({ month: paying, personId: "a", cadences: defaultCadences(), currency: "USD" })
+    expect(payloadHash(again)).toBe(payloadHash(p))
   })
 })
 
