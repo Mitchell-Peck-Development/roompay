@@ -107,8 +107,17 @@ test("owner publishes, roommate picks a plan and gets the dates, owner sees the 
   await page.getByLabel("Water", { exact: true }).blur()
   await page.getByRole("button", { name: "Update link" }).click()
   await expect(page.getByText(/up to date/)).toBeVisible()
+  // The correction keeps the payment already made; the extra dollar goes on what's still to come.
+  await expect(page.getByText("$238.75 of $956.00 received")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Mark paid" })).toHaveCount(3)
+  await expect
+    .poll(async () => (await roommate.request.get(`/r/${token}/calendar.ics?tz=America/Chicago`)).text())
+    .toContain("SUMMARY:Paid · $238.75 · Unit 3012")
   await roommate.reload()
   await expect(roommate.getByTestId("roommate-share")).toHaveText("$956.00")
+  const weekly = roommate.getByRole("radio", { name: /Weekly/ })
+  await expect(weekly).toContainText("Paid")
+  await expect(weekly).toContainText("$239.09")
 
   // Deleting the link ends it for the roommate and empties the feed.
   await page.getByRole("button", { name: "Link options" }).click()
@@ -193,6 +202,13 @@ test("a mid-month arrival gets a catch-up, and that month is never billed twice"
   const roommate = await newDevice(browserOf(page))
   await roommate.goto(url)
   await expect(roommate.getByText("Move-in catch-up")).toBeVisible()
+
+  // They pick how to pay it off: the owner's installments, or one of the household's usual schedules.
+  await expect(roommate.getByRole("radio")).toHaveCount(4)
+  await roommate.getByRole("radio", { name: /Split in two/ }).click()
+  await expect(roommate.getByTestId("pick-feedback")).toContainText("Split in two")
+  await page.reload()
+  await expect(page.getByTestId("pick-status")).toHaveText("Biscuit picked Split in two.")
 
   // Settling it hands the months back to the usual flow.
   await page.getByRole("button", { name: "Mark the catch-up settled" }).click()
