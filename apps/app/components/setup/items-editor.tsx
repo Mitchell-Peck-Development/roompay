@@ -4,7 +4,6 @@ import {
   type ItemTemplate,
   formatMoney,
   isDueLater,
-  isOffset,
   normalizeCoverage,
   normalizeDue,
   ordinal,
@@ -47,11 +46,20 @@ function dueLabel(item: ItemTemplate): string | null {
   return `Due the ${ordinal(due.day)}${when}`
 }
 
-/** "Covers last month" — the bit that decides who's actually on the hook. */
+/** "Covers last month, from the 28th" — who's actually on the hook. */
 function coversLabel(item: ItemTemplate): string {
-  const { offsetMonths, spanMonths } = normalizeCoverage(item.coverage)
-  const back = offsetMonths === 1 ? "last month" : `${offsetMonths} months back`
-  return spanMonths === 1 ? `Covers ${back}` : `Covers ${spanMonths} months, up to ${back}`
+  const { offsetMonths, spanMonths, startDay } = normalizeCoverage(item.coverage)
+  const back =
+    offsetMonths === 0 ? "this month" : offsetMonths === 1 ? "last month" : `${offsetMonths} months back`
+  const months =
+    spanMonths === 1 ? `Covers ${back}` : `Covers ${spanMonths} months, up to ${back}`
+  return startDay ? `${months}, from the ${ordinal(startDay)}` : months
+}
+
+/** Whether this item's coverage is worth spelling out in the list. */
+function hasCycle(item: ItemTemplate): boolean {
+  const { offsetMonths, spanMonths, startDay } = normalizeCoverage(item.coverage)
+  return offsetMonths > 0 || spanMonths > 1 || startDay !== undefined
 }
 
 export function ItemsEditor() {
@@ -98,7 +106,7 @@ export function ItemsEditor() {
                 {summary(item, data.household.currency)}
                 {item.split.mode !== "default" && ` · ${describeItemSplit(item.split, people)}`}
               </p>
-              {isOffset(item.coverage) && (
+              {hasCycle(item) && (
                 <p className="flex items-center gap-1 text-xs text-muted-foreground">
                   <History className="size-3 shrink-0" aria-hidden />
                   {coversLabel(item)}

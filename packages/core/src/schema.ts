@@ -34,6 +34,12 @@ export const coverageSchema = z.object({
   offsetMonths: z.number().int().min(0).max(24),
   /** How many months of service one bill covers. */
   spanMonths: z.number().int().min(1).max(12),
+  /**
+   * The day of the month the reading cycle turns over. A meter read on the
+   * 28th covers the 28th to the 27th, not the 1st to the 31st. Absent means
+   * whole calendar months, which is the same as the 1st.
+   */
+  startDay: z.number().int().min(1).max(31).optional(),
 })
 
 /** A concrete stretch of service, inclusive at both ends. */

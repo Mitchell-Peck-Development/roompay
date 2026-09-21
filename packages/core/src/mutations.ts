@@ -1,5 +1,11 @@
 import { defaultCatchupDates, newCatchupRecord } from "./catchup"
-import { coverageWindow, dueDateFor, dueRuleFrom, normalizeDue } from "./coverage"
+import {
+  coverageWindow,
+  dueDateFor,
+  dueRuleFrom,
+  normalizeCoverage,
+  normalizeDue,
+} from "./coverage"
 import type { ISODate, Period } from "./dates"
 import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
 import { newId, randomToken } from "./ids"
@@ -10,6 +16,7 @@ import type {
   AppData,
   Cadence,
   CatchupRecord,
+  Coverage,
   ItemSplit,
   ItemTemplate,
   LineMeter,
@@ -193,6 +200,19 @@ export function setItemDefaultAmount(
   if (!item) return
   if (cents === null) delete item.defaultAmountCents
   else item.defaultAmountCents = cents
+}
+
+/**
+ * Promotes the stretch one month's bill was given to the item's standing
+ * rule, so every statement after it covers the same cycle.
+ */
+export function setItemCoverage(
+  draft: AppData,
+  templateId: string,
+  coverage: Coverage
+) {
+  const item = draft.items.find((t) => t.id === templateId)
+  if (item) item.coverage = normalizeCoverage(coverage)
 }
 
 /** Promotes a single month's split of an item to the item's usual split. */

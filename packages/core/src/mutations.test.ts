@@ -69,6 +69,21 @@ describe("line items", () => {
     expect(item("Power").split).toEqual({ mode: "exclude" })
   })
 
+  it("takes a cycle set on one month as the item's rule from then on", () => {
+    // Power read on the 28th, two months behind: this month's line is redrawn
+    // by hand, then made the rule.
+    M.setLineCoverage(data, line("Power").id, { start: "2026-07-28", end: "2026-08-27" }, now)
+    expect(item("Power").coverage).toEqual({ offsetMonths: 1, spanMonths: 1 })
+
+    M.setItemCoverage(data, item("Power").id, { offsetMonths: 2, spanMonths: 1, startDay: 28 })
+    expect(item("Power").coverage).toEqual({ offsetMonths: 2, spanMonths: 1, startDay: 28 })
+    // The month already open keeps the window it was given.
+    expect(line("Power").covers).toEqual({ start: "2026-07-28", end: "2026-08-27" })
+    // And the next month starts from the rule.
+    M.startNewMonth(data, "2026-10", now)
+    expect(line("Power").covers).toEqual({ start: "2026-08-28", end: "2026-09-27" })
+  })
+
   it("sets an item's usual amount on its own, and clears it", () => {
     M.setItemDefaultAmount(data, item("Rent").id, 170000)
     expect(item("Rent").defaultAmountCents).toBe(170000)

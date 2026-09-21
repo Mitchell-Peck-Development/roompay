@@ -1,14 +1,17 @@
 import {
   type ISODate,
   type Period,
+  addDays,
   dateInPeriod,
   diffDays,
   firstOfPeriod,
   formatPeriod,
   formatShortDate,
   lastOfPeriod,
+  nextPeriod,
   ordinal,
   periodOf,
+  prevPeriod,
   shiftPeriod,
 } from "./dates"
 import type { Coverage, DueRule, ItemTemplate, Person, ServiceWindow } from "./schema"
@@ -31,21 +34,38 @@ const clamp = (n: number, lo: number, hi: number) =>
 
 export function normalizeCoverage(coverage?: Coverage): Coverage {
   if (!coverage) return SAME_MONTH
-  return {
+  const normalized: Coverage = {
     offsetMonths: clamp(coverage.offsetMonths, 0, 24),
     spanMonths: clamp(coverage.spanMonths, 1, 12),
   }
+  // The 1st *is* whole calendar months, so it's stored as the plain form.
+  const startDay = coverage.startDay ? clamp(coverage.startDay, 1, 31) : 1
+  if (startDay > 1) normalized.startDay = startDay
+  return normalized
 }
 
-/** The service window a bill on `period`'s statement pays for. */
+/**
+ * The service window a bill on `period`'s statement pays for.
+ *
+ * With a cycle day the window runs from that day to the day before it, so
+ * consecutive bills meet exactly: a meter read on the 28th gives 28 Aug – 27
+ * Sep, and the next bill picks up on the 28th. Day 31 lands on the last day
+ * of a short month, and the following window still starts the day after.
+ */
 export function coverageWindow(
   period: Period,
   coverage?: Coverage
 ): ServiceWindow {
-  const { offsetMonths, spanMonths } = normalizeCoverage(coverage)
+  const { offsetMonths, spanMonths, startDay } = normalizeCoverage(coverage)
   const last = shiftPeriod(period, -offsetMonths)
   const first = shiftPeriod(last, -(spanMonths - 1))
-  return { start: firstOfPeriod(first), end: lastOfPeriod(last) }
+  if (!startDay) {
+    return { start: firstOfPeriod(first), end: lastOfPeriod(last) }
+  }
+  return {
+    start: dateInPeriod(first, startDay),
+    end: addDays(dateInPeriod(nextPeriod(last), startDay), -1),
+  }
 }
 
 /**
@@ -106,20 +126,30 @@ export function describeDue(due?: DueRule): string {
   }
 }
 
-/** The coverage a concrete window came from, as far as it can be read back. */
+/**
+ * The coverage a concrete window came from, as far as it can be read back —
+ * which is what turns a window set by hand on one month into a rule every
+ * month can follow. Whatever it proposes has to rebuild the same window, so
+ * anything that doesn't repeat cleanly (a one-off stretch, an odd number of
+ * days) comes back null rather than as a rule that would drift.
+ */
 export function coverageOf(
   period: Period,
   window: ServiceWindow
 ): Coverage | null {
   const first = periodOf(window.start)
-  const last = periodOf(window.end)
-  if (window.start !== firstOfPeriod(first) || window.end !== lastOfPeriod(last)) {
-    return null
+  const wholeMonths = isWholeMonths(window)
+  const last = wholeMonths ? periodOf(window.end) : prevPeriod(periodOf(addDays(window.end, 1)))
+  const candidate: Coverage = {
+    offsetMonths: monthsBetween(last, period),
+    spanMonths: monthsBetween(first, last) + 1,
   }
-  const offsetMonths = monthsBetween(last, period)
-  const spanMonths = monthsBetween(first, last) + 1
-  if (offsetMonths < 0 || spanMonths < 1) return null
-  return { offsetMonths, spanMonths }
+  if (!wholeMonths) candidate.startDay = Number(window.start.slice(8, 10))
+  if (candidate.offsetMonths < 0 || candidate.spanMonths < 1) return null
+
+  const rebuilt = coverageWindow(period, candidate)
+  if (rebuilt.start !== window.start || rebuilt.end !== window.end) return null
+  return normalizeCoverage(candidate)
 }
 
 function monthsBetween(from: Period, to: Period): number {
@@ -179,16 +209,20 @@ export function formatWindow(window: ServiceWindow, locale = "en-US"): string {
 
 /** How an item's coverage reads in Setup, with no particular month in mind. */
 export function describeCoverage(coverage?: Coverage): string {
-  const { offsetMonths, spanMonths } = normalizeCoverage(coverage)
+  const { offsetMonths, spanMonths, startDay } = normalizeCoverage(coverage)
   const ending =
     offsetMonths === 0
       ? "the month it's billed in"
       : offsetMonths === 1
         ? "the month before"
         : `${offsetMonths} months back`
-  return spanMonths === 1
-    ? `Covers ${ending}.`
-    : `Covers ${spanMonths} months, ending with ${ending}.`
+  const months =
+    spanMonths === 1
+      ? `Covers ${ending}.`
+      : `Covers ${spanMonths} months, ending with ${ending}.`
+  if (!startDay) return months
+  const cycle = `Reads on the ${ordinal(startDay)}, so it runs from the ${ordinal(startDay)} to the day before.`
+  return `${months} ${cycle}`
 }
 
 /** True when a bill pays for service before the month it's billed in. */

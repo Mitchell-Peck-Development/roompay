@@ -169,6 +169,18 @@ money between people; it only moves the bill around the calendar.
 - **Coverage** lives on the item (Setup → Line items): *this month*, *last month*, *2 months
   back*, and how many months one bill spans. Rent and fees default to the month they're billed in;
   water, sewer and power default to the month before.
+- **A meter isn't read on the 1st**, so an item can also carry the day its cycle turns over
+  (`coverage.startDay`). A window then runs from that day to the day before the next one — power
+  read on the 28th and billed two months later covers *Jul 28 – Aug 27* on September's statement,
+  and October's picks up on *Aug 28*. Consecutive statements meet exactly: no day of service is
+  billed twice or missed, whatever the day, including the 31st in a short month (it lands on the
+  last day, and the next window still starts the day after). The 1st is plain calendar months and
+  is stored that way. Setup shows the rule worked out against the month you're billing, so it can
+  be checked rather than imagined.
+- **Either direction.** A window redrawn by hand on the Month tab offers to become the item's rule
+  (*Cover this stretch every month*) whenever it's one a month could repeat — `coverageOf` reads a
+  window back into a rule and only accepts it if rebuilding it gives the same dates, so a one-off
+  stretch stays a one-off.
 - **Due** lives there too, as a month offset plus a day — *the following month*, the 1st — so a
   bill billed now can fall due next month, or (for a landlord who wants rent early) the month
   before. It's clamped into whatever month it lands in, so the 31st is the 28th in February.

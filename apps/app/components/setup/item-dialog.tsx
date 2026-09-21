@@ -4,11 +4,16 @@ import {
   type Coverage,
   type ItemTemplate,
   SAME_MONTH,
-  describeCoverage,
+  coverageWindow,
   describeDue,
+  dueDateFor,
+  formatLongDate,
+  formatPeriod,
+  formatWindow,
   newId,
   normalizeCoverage,
   normalizeDue,
+  ordinal,
 } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -97,6 +102,10 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
   const meter = draft.meter ?? { unit: "kWh", rate: "", baseFeeCents: 0, input: "usage" as const }
   const coverage: Coverage = normalizeCoverage(draft.coverage)
   const due = normalizeDue(draft)
+  // A rule is easier to check against one real month than to read in the
+  // abstract, so every choice here is shown against the month being billed.
+  const period = data.current.period
+  const dueOn = due ? formatLongDate(dueDateFor(period, due)!) : null
   const patch = (next: Partial<ItemTemplate>) => setDraft((d) => ({ ...d, ...next }))
 
   function submit(event: React.FormEvent) {
@@ -182,35 +191,74 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
           </ToggleGroup>
           <p className="text-xs text-muted-foreground">
             {OFFSETS.find((o) => o.months === coverage.offsetMonths)?.hint ??
-              describeCoverage(coverage)}
+              `Service from ${coverage.offsetMonths} months before the bill.`}
           </p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-span">Months of service per bill</Label>
-          <Input
-            id="item-span"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={12}
-            className="tabular h-10 w-24"
-            value={coverage.spanMonths}
-            onChange={(e) =>
-              patch({
-                coverage: normalizeCoverage({
-                  ...coverage,
-                  spanMonths: Number(e.target.value) || 1,
-                }),
-              })
-            }
-          />
-          <span className="text-xs text-muted-foreground">
-            {coverage.spanMonths > 1
-              ? "A quarterly or seasonal bill."
-              : "One month at a time."}
-          </span>
+        <div className="grid gap-3 min-[380px]:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-span">Months per bill</Label>
+            <Input
+              id="item-span"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={12}
+              className="tabular h-10 w-24"
+              value={coverage.spanMonths}
+              onChange={(e) =>
+                patch({
+                  coverage: normalizeCoverage({
+                    ...coverage,
+                    spanMonths: Number(e.target.value) || 1,
+                  }),
+                })
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              {coverage.spanMonths > 1 ? "A quarterly or seasonal bill." : "One month at a time."}
+            </span>
+          </div>
+
+          {/* A meter isn't read on the 1st. Without this, the only windows
+              Setup could describe were whole calendar months — and a cycle
+              that runs 28th to 28th had to be redrawn by hand every month. */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-cycle-day">Read on the…</Label>
+            <Input
+              id="item-cycle-day"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={31}
+              placeholder="1st"
+              className="tabular h-10 w-24"
+              value={coverage.startDay ?? ""}
+              onChange={(e) => {
+                const day = Number(e.target.value)
+                patch({
+                  coverage: normalizeCoverage({
+                    ...coverage,
+                    startDay: day >= 1 && day <= 31 ? day : 1,
+                  }),
+                })
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              {coverage.startDay
+                ? `The ${ordinal(coverage.startDay)} to the day before the next.`
+                : "Whole calendar months. Set the meter-reading day for a cycle that isn't."}
+            </span>
+          </div>
         </div>
+
+        <p className="rounded-md bg-muted/60 p-2.5 text-xs leading-relaxed text-muted-foreground">
+          On {formatPeriod(period)}&apos;s statement, this covers{" "}
+          <strong className="font-medium text-foreground">
+            {formatWindow(coverageWindow(period, coverage))}
+          </strong>
+          {dueOn ? `, due ${dueOn}.` : "."}
+        </p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-lg border p-3">

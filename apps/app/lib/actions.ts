@@ -3,6 +3,7 @@
 import {
   type AppData,
   type CatchupTabPref,
+  type Coverage,
   type ISODate,
   type ItemSplit,
   type ItemTemplate,
@@ -46,6 +47,8 @@ export const actions = {
     run((d) => M.setItemDefaultAmount(d, templateId, cents)),
   setItemSplit: (templateId: string, split: ItemSplit) =>
     run((d) => M.setItemSplit(d, templateId, split)),
+  setItemCoverage: (templateId: string, coverage: Coverage) =>
+    run((d) => M.setItemCoverage(d, templateId, coverage)),
   removeItem: (id: string) => run((d) => M.removeItem(d, id)),
   moveItem: (id: string, delta: -1 | 1) => run((d) => M.moveItem(d, id, delta)),
 

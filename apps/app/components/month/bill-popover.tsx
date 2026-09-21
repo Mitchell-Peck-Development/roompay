@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  type Coverage,
   type MonthLine,
   type Period,
   type ServiceWindow,
@@ -10,6 +11,7 @@ import {
   formatWindow,
   lineAmountCents,
   meterDetail,
+  ordinal,
   periodOf,
 } from "@workspace/core"
 import { DateField } from "@/components/common/date-field"
@@ -20,12 +22,28 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
-import { CalendarClock, History } from "lucide-react"
+import { CalendarClock, History, Repeat } from "lucide-react"
 import type * as React from "react"
+import { toast } from "sonner"
 import { Amount } from "@/components/common/amount"
 import { MoneyInput } from "@/components/common/money-input"
 import { actions } from "@/lib/actions"
 import { useData } from "@/lib/store"
+
+/** "the 28th to the 27th, 2 months back" — the rule in one phrase. */
+function describeCycle(coverage: Coverage): string {
+  const back =
+    coverage.offsetMonths === 0
+      ? "the month it's billed in"
+      : coverage.offsetMonths === 1
+        ? "the month before"
+        : `${coverage.offsetMonths} months back`
+  const months =
+    coverage.spanMonths === 1 ? back : `${coverage.spanMonths} months, ending ${back}`
+  return coverage.startDay
+    ? `the ${ordinal(coverage.startDay)} onwards, ${months}`
+    : months
+}
 
 const PRESETS = [
   { months: 0, label: "This month" },
@@ -63,12 +81,24 @@ export function BillPopover({
   /** False in the month list, where the amount is already an input in the row. */
   amount?: boolean
 }) {
-  const currency = useData().household.currency
+  const data = useData()
+  const currency = data.household.currency
   const covers = line.covers ?? coverageWindow(period)
   const preset = coverageOf(period, covers)
   const selected =
-    preset?.spanMonths === 1 && preset.offsetMonths <= 2 ? String(preset.offsetMonths) : ""
+    preset?.spanMonths === 1 && preset.offsetMonths <= 2 && !preset.startDay
+      ? String(preset.offsetMonths)
+      : ""
   const dueElsewhere = Boolean(line.dueDate && periodOf(line.dueDate) !== period)
+
+  // A period set by hand is this month's business — unless it's a cycle that
+  // repeats, which most are. If it can be written as a rule, it can be the
+  // item's rule, and then later statements come out right on their own.
+  const item = data.items.find((t) => t.id === line.templateId)
+  const repeatable =
+    item && preset && JSON.stringify(coverageWindow(period, item.coverage)) !== JSON.stringify(covers)
+      ? { item, coverage: preset }
+      : null
 
   const setDate = (key: keyof ServiceWindow) => (value: string | null) => {
     if (value) actions.setLineCoverage(line.id, { ...covers, [key]: value })
@@ -155,6 +185,22 @@ export function BillPopover({
               />
             </div>
           </div>
+
+          {repeatable && (
+            <button
+              type="button"
+              className="flex items-start gap-1.5 text-left text-xs font-medium text-primary underline decoration-dotted underline-offset-4"
+              onClick={() => {
+                actions.setItemCoverage(repeatable.item.id, repeatable.coverage)
+                toast.success(
+                  `${repeatable.item.label || "This item"} covers ${describeCycle(repeatable.coverage)} from now on`
+                )
+              }}
+            >
+              <Repeat className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              Cover this stretch every month — {describeCycle(repeatable.coverage)}
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col gap-1 border-t pt-3">
@@ -182,8 +228,8 @@ export function BillPopover({
 
         <p className="flex items-start gap-1.5 border-t pt-3 text-xs text-muted-foreground">
           <History className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          Covers {formatWindow(covers)}. Both of these repeat every month once you set them in
-          Setup → Line items.
+          Covers {formatWindow(covers)}. A due date set here sets the rule for later statements;
+          the period stays with this month unless you say otherwise.
         </p>
       </PopoverContent>
     </Popover>
