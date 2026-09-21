@@ -171,6 +171,8 @@ export const catchupTabPrefSchema = z.enum(["off", "auto", "on"])
 /** How the app is shown. Absent in documents written before it existed. */
 export const prefsSchema = z.object({
   catchupTab: catchupTabPrefSchema.default("auto"),
+  /** Setup steps the owner has looked over and ticked off by hand. */
+  reviewed: z.array(z.string().max(64)).max(40).default([]),
 })
 
 export const linkSecretsSchema = z.object({
@@ -189,7 +191,7 @@ export const appDataSchema = z.object({
   current: monthRecordSchema,
   months: z.array(monthRecordSchema).max(600),
   catchups: z.record(z.string(), catchupRecordSchema),
-  prefs: prefsSchema.default({ catchupTab: "auto" }),
+  prefs: prefsSchema.default({ catchupTab: "auto", reviewed: [] }),
   links: z.record(z.string(), linkSecretsSchema),
   meta: z.object({
     createdAt: timestamp,

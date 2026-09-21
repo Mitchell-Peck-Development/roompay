@@ -128,6 +128,28 @@ version is bumped so the old one — which held the app shell under `/`, where t
 now — is dropped on activation. Local data is keyed to the origin, not the path, so nothing is
 lost by the move.
 
+## Setting up, in as many sittings as it takes
+
+The first run asks three questions — what the place is called, who's splitting it, what the fixed
+charges cost — and stops there. Everything else that decides whether the numbers come out right
+(when each bill covers, how it splits, how a roommate can pay it) is a **checklist at the top of
+Setup**: what's done, what's next, and a button that scrolls you to the one card that does it. The
+app opens on that checklist rather than the Month tab until the required steps are done, and every
+other tab carries a one-line *Finish setting up · 3 of 6* banner back to it. It disappears on its
+own once the list is empty.
+
+Three of those steps can't be read off the data — a default split of "evenly" and the stock
+payment options look exactly the same whether they were chosen or never opened. Those are ticked
+off by hand, and the tick is what `prefs.reviewed` stores (`packages/core/src/setup.ts`). The rest
+are inferred: a household has a name or it doesn't, every fixed item has an amount or it doesn't.
+
+Which matters because **the Month tab is not where you set things up** — and until now it didn't say
+which of its edits outlive the month. They don't all behave the same way, so each one says what it
+does: a fixed charge carries its new amount into later months and the line reads *every month:
+$1,700.00*; a due date set by hand keeps its distance from the billed month next time; a split
+changed for one line stays there, and offers *Split it this way every month* rather than letting
+"I set that up" and "it went back to normal" be the same story.
+
 ## Offset bills, residency and the Bills calendar
 
 A bill has three dates, and they move independently. The sewer statement that turns up in

@@ -5,7 +5,10 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Label } from "@workspace/ui/components/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
 import { RadioGroup, RadioGroupItem } from "@workspace/ui/components/radio-group"
+import { toast } from "sonner"
 import { PercentFields } from "@/components/common/percent-fields"
+import { actions } from "@/lib/actions"
+import { useData } from "@/lib/store"
 
 type PersonRef = { personId: string; nickname: string }
 
@@ -115,15 +118,24 @@ export function ItemSplitFields({
 
 export function LineSplitPopover({
   lineId,
+  templateId,
   split,
   people,
   onChange,
 }: {
   lineId: string
+  /** The item this line came from, if any — what "every month" would change. */
+  templateId?: string
   split: ItemSplit
   people: PersonRef[]
   onChange(split: ItemSplit): void
 }) {
+  const item = useData().items.find((t) => t.id === templateId)
+  // A split changed here is this month's business. Saying so — and offering
+  // the other thing in the same breath — is what stops "I set that up" and
+  // "it went back to normal next month" from being the same story.
+  const differs = item !== undefined && JSON.stringify(item.split) !== JSON.stringify(split)
+
   return (
     <Popover>
       <PopoverTrigger className="rounded text-xs text-muted-foreground underline decoration-dotted underline-offset-4 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
@@ -132,6 +144,23 @@ export function LineSplitPopover({
       <PopoverContent align="start" className="w-80">
         <p className="mb-3 text-sm font-medium">How is this one split?</p>
         <ItemSplitFields split={split} people={people} onChange={onChange} idPrefix={`split-${lineId}`} />
+        {differs && (
+          <div className="mt-3 border-t pt-3">
+            <p className="text-xs text-muted-foreground">
+              This is {item.label || "this item"} for this month only.
+            </p>
+            <button
+              type="button"
+              className="mt-1 text-xs font-medium text-primary underline decoration-dotted underline-offset-4"
+              onClick={() => {
+                actions.setItemSplit(item.id, split)
+                toast.success(`${item.label || "This item"} splits this way every month now`)
+              }}
+            >
+              Split it this way every month
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   )

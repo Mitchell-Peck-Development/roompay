@@ -12,6 +12,7 @@ import {
   type Period,
   type Published,
   type ServiceWindow,
+  type SetupStepId,
   type Split,
   type StatementRef,
   mergeData,
@@ -41,6 +42,10 @@ export const actions = {
   removePerson: (id: string) => run((d) => M.removePerson(d, id)),
 
   upsertItem: (item: ItemTemplate) => run((d) => M.upsertItem(d, item)),
+  setItemDefaultAmount: (templateId: string, cents: number | null) =>
+    run((d) => M.setItemDefaultAmount(d, templateId, cents)),
+  setItemSplit: (templateId: string, split: ItemSplit) =>
+    run((d) => M.setItemSplit(d, templateId, split)),
   removeItem: (id: string) => run((d) => M.removeItem(d, id)),
   moveItem: (id: string, delta: -1 | 1) => run((d) => M.moveItem(d, id, delta)),
 
@@ -51,6 +56,8 @@ export const actions = {
   setDefaultSplit: (split: Split) => run((d) => void (d.split = split)),
   setCatchupTabPref: (catchupTab: CatchupTabPref) =>
     run((d) => void (d.prefs = { ...d.prefs, catchupTab })),
+  setSetupReviewed: (id: SetupStepId, reviewed: boolean) =>
+    run((d) => M.setSetupReviewed(d, id, reviewed)),
   setMonthSplit: (split: Split) => run((d) => M.setMonthSplit(d, split)),
   setMonthTitle: (title: string) => run((d) => M.setMonthTitle(d, title)),
 

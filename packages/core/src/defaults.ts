@@ -149,7 +149,7 @@ export function createInitialData(now: Date): AppData {
     cadences: defaultCadences(),
     current: newMonth(base, defaultPeriod(now), now),
     catchups: {},
-    prefs: { catchupTab: "auto" },
+    prefs: { catchupTab: "auto", reviewed: [] },
     links: {},
     meta: { createdAt: stamp, updatedAt: stamp },
   }

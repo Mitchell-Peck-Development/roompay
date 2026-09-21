@@ -37,6 +37,24 @@ describe("parseAppData", () => {
     expect(result.dropped).toEqual([])
   })
 
+  it("takes a household that predates the checklist as already set up", () => {
+    const raw = stored(saved())
+    delete raw.prefs
+
+    // Months on the clock: whoever saved these made the calls the checklist
+    // asks about, long before it existed.
+    const result = parseAppData(raw, now)
+    expect(result.data.prefs.reviewed).toEqual(["timing", "split", "cadences"])
+    expect(result.dropped).toEqual([])
+  })
+
+  it("leaves a document with no months to work through the checklist", () => {
+    const raw = stored(createInitialData(now))
+    delete raw.prefs
+
+    expect(parseAppData(raw, now).data.prefs.reviewed).toEqual([])
+  })
+
   it("falls back to the default when a display setting can't be read", () => {
     const raw = stored(saved())
     raw.prefs = { catchupTab: "sometimes" }

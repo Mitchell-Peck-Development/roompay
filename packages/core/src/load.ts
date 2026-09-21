@@ -1,4 +1,5 @@
 import { createInitialData, newMonth } from "./defaults"
+import { CONFIRMED_STEPS } from "./setup"
 import {
   type AppData,
   type Cadence,
@@ -110,9 +111,24 @@ function timestamps(value: unknown): Partial<AppData["meta"]> {
   return kept
 }
 
+/**
+ * A document saved before the setup checklist existed, with months already in
+ * it, belongs to someone who set this up long ago. The steps that ask to be
+ * confirmed were confirmed by months of using it, so they start ticked rather
+ * than sending a working household back to a checklist.
+ */
+function presumeSetUp(stored: unknown, data: AppData): AppData {
+  const known =
+    Boolean(stored) && typeof stored === "object" && "prefs" in (stored as object)
+  if (known || data.months.length === 0) return data
+  return { ...data, prefs: { ...data.prefs, reviewed: [...CONFIRMED_STEPS] } }
+}
+
 export function parseAppData(raw: unknown, now = new Date()): LoadResult {
   const strict = appDataSchema.safeParse(raw)
-  if (strict.success) return { data: strict.data, dropped: [], fresh: false }
+  if (strict.success) {
+    return { data: presumeSetUp(raw, strict.data), dropped: [], fresh: false }
+  }
 
   const fallback = createInitialData(now)
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -192,7 +208,7 @@ export function parseAppData(raw: unknown, now = new Date()): LoadResult {
   const salvaged = appDataSchema.safeParse(repaired)
   if (salvaged.success) {
     return {
-      data: salvaged.data,
+      data: presumeSetUp(stored, salvaged.data),
       // Nothing identifiable was lost, but something at the top level was off.
       dropped: dropped.length > 0 ? dropped : ["a setting that couldn't be read"],
       fresh: false,

@@ -1,9 +1,9 @@
 "use client"
 
-import { showCatchupTab } from "@workspace/core"
+import { setupProgress, showCatchupTab } from "@workspace/core"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
-import { CalendarDays, CalendarRange, History, ReceiptText, Settings2 } from "lucide-react"
+import { ListChecks } from "lucide-react"
 import * as React from "react"
 import { BillsTab } from "@/components/bills/bills-tab"
 import { CatchupTab } from "@/components/catchup/catchup-tab"
@@ -11,37 +11,31 @@ import { HistoryTab } from "@/components/history/history-tab"
 import { MonthTab } from "@/components/month/month-tab"
 import { SetupTab } from "@/components/setup/setup-tab"
 import { startPersistence, useData, useHydrated } from "@/lib/store"
+import { TABS, type TabId, isTab } from "@/lib/tabs"
 import { FirstRun } from "./first-run"
 import { InstallNudge } from "./install-nudge"
 import { RecoveryNotice } from "./recovery-notice"
 
-const TABS = [
-  { id: "bills", label: "Bills", icon: CalendarDays },
-  { id: "month", label: "Month", icon: ReceiptText },
-  { id: "catchup", label: "Catch-up", icon: CalendarRange },
-  { id: "history", label: "History", icon: History },
-  { id: "setup", label: "Setup", icon: Settings2 },
-] as const
-
-export type TabId = (typeof TABS)[number]["id"]
-
-const isTab = (value: string | null): value is TabId =>
-  TABS.some((tab) => tab.id === value)
-
-/** The tab lives in client state and is mirrored to ?tab= so reloads keep it. */
-function useTab(): [TabId, (tab: TabId) => void] {
+/**
+ * The tab lives in client state and is mirrored to ?tab= so reloads keep it.
+ * Null means nobody has picked one — the URL didn't name a tab and this visit
+ * hasn't switched — which is what lets the app choose where to open without
+ * writing a tab into the address bar that the visitor never asked for.
+ */
+function useTab(): [TabId | null, (tab: TabId) => void] {
   // Safe to read the URL up front: nothing tab-specific renders until the
   // store has hydrated, which only happens after mount.
-  const [tab, setTab] = React.useState<TabId>(() => {
-    if (typeof window === "undefined") return "month"
+  const [tab, setTab] = React.useState<TabId | null>(() => {
+    if (typeof window === "undefined") return null
     const fromUrl = new URLSearchParams(window.location.search).get("tab")
-    return isTab(fromUrl) ? fromUrl : "month"
+    return isTab(fromUrl) ? fromUrl : null
   })
   const change = React.useCallback((next: TabId) => {
     setTab(next)
+    // Every tab is written down, the Month tab included: a reload should put
+    // you back where you were, not where the app would have opened.
     const url = new URL(window.location.href)
-    if (next === "month") url.searchParams.delete("tab")
-    else url.searchParams.set("tab", next)
+    url.searchParams.set("tab", next)
     window.history.replaceState(null, "", url)
     window.scrollTo({ top: 0 })
   }, [])
@@ -55,6 +49,12 @@ export function AppShell() {
 
   React.useEffect(() => startPersistence(), [])
 
+  // Half-finished setup decides where the app opens: the Month tab looks like
+  // the place to set things up, but what's typed there belongs to that month
+  // alone. Setup is where the numbers that carry forward live.
+  const progress = setupProgress(data)
+  const landing: TabId = progress.ready ? "month" : "setup"
+
   // The Catch-up tab only earns its place while someone is settling in —
   // unless Setup says otherwise. Everything else is always there.
   const catchup = showCatchupTab(data, data.current.period)
@@ -63,7 +63,8 @@ export function AppShell() {
     [catchup]
   )
   // A tab that has just gone away can't stay open behind its own nav entry.
-  const open: TabId = tabs.some((t) => t.id === tab) ? tab : "month"
+  const chosen = tab ?? landing
+  const open: TabId = tabs.some((t) => t.id === chosen) ? chosen : "month"
 
   if (!hydrated) return <ShellSkeleton />
   if (data.people.length === 0) return <FirstRun />
@@ -96,6 +97,23 @@ export function AppShell() {
       <RecoveryNotice />
       <InstallNudge />
 
+      {!progress.ready && open !== "setup" && (
+        <button
+          type="button"
+          onClick={() => setTab("setup")}
+          className="mb-4 flex w-full items-center gap-3 rounded-xl bg-accent px-4 py-3 text-left text-accent-foreground ring-1 ring-primary/20"
+        >
+          <ListChecks className="size-4 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">
+              Finish setting up · {progress.done} of {progress.total}
+            </span>
+            <span className="block truncate text-xs">Next: {progress.next?.title}</span>
+          </span>
+          <span className="shrink-0 text-xs font-medium underline underline-offset-4">Continue</span>
+        </button>
+      )}
+
       <main className="flex flex-col gap-4">
         {open === "bills" && <BillsTab />}
         {open === "month" && (
@@ -103,7 +121,7 @@ export function AppShell() {
         )}
         {open === "catchup" && <CatchupTab />}
         {open === "history" && <HistoryTab onOpen={() => setTab("month")} />}
-        {open === "setup" && <SetupTab />}
+        {open === "setup" && <SetupTab onOpenTab={setTab} />}
       </main>
 
       <footer className="mt-8 text-center text-xs text-muted-foreground">

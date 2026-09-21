@@ -61,6 +61,23 @@ describe("line items", () => {
     expect(line("Gas").meter).toEqual({ unit: "therm", rate: "1.2", baseFeeCents: 0, input: "usage" })
   })
 
+  it("carries a month's split back to the item when asked, and not before", () => {
+    M.setLineSplit(data, line("Power").id, { mode: "exclude" }, now)
+    expect(item("Power").split).toEqual({ mode: "default" })
+    // Next month would have gone back to the usual split; this makes it stick.
+    M.setItemSplit(data, item("Power").id, { mode: "exclude" })
+    expect(item("Power").split).toEqual({ mode: "exclude" })
+  })
+
+  it("sets an item's usual amount on its own, and clears it", () => {
+    M.setItemDefaultAmount(data, item("Rent").id, 170000)
+    expect(item("Rent").defaultAmountCents).toBe(170000)
+    // The month that's open keeps whatever it already said.
+    expect(line("Rent").amountCents).toBeNull()
+    M.setItemDefaultAmount(data, item("Rent").id, null)
+    expect(item("Rent").defaultAmountCents).toBeUndefined()
+  })
+
   it("editing an item keeps what was entered", () => {
     M.setLineAmount(data, line("Water").id, 3800, now)
     M.upsertItem(data, { ...item("Water"), label: "Water & sewer", split: { mode: "exclude" } })

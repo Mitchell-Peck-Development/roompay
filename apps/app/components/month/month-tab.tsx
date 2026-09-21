@@ -50,7 +50,7 @@ export function MonthTab({ onOpenCatchup }: { onOpenCatchup?: () => void }) {
 
       <SectionCard
         title="This month's bill"
-        description="Fixed charges are prefilled. Plug in the rest from the statement."
+        description="Fixed charges are prefilled from Setup, and a new amount for one becomes what later months start from. The rest come off the statement, month by month."
       >
         <div className="flex flex-col divide-y">
           {computed.lines.map((line) => (

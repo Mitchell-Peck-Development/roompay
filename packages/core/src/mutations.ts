@@ -4,6 +4,7 @@ import type { ISODate, Period } from "./dates"
 import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
 import { newId, randomToken } from "./ids"
 import { lineAmountCents } from "./meter"
+import type { SetupStepId } from "./setup"
 import { computeMonth } from "./split"
 import type {
   AppData,
@@ -176,6 +177,28 @@ export function upsertItem(draft: AppData, item: ItemTemplate) {
   } else if (item.kind === "fixed" && line.amountCents === null) {
     line.amountCents = item.defaultAmountCents ?? null
   }
+}
+
+/**
+ * Promotes what was typed on the Month tab to the item's usual amount, so
+ * every month from here starts from it. Month lines already written keep
+ * whatever they say — this is a default, not a correction.
+ */
+export function setItemDefaultAmount(
+  draft: AppData,
+  templateId: string,
+  cents: number | null
+) {
+  const item = draft.items.find((t) => t.id === templateId)
+  if (!item) return
+  if (cents === null) delete item.defaultAmountCents
+  else item.defaultAmountCents = cents
+}
+
+/** Promotes a single month's split of an item to the item's usual split. */
+export function setItemSplit(draft: AppData, templateId: string, split: ItemSplit) {
+  const item = draft.items.find((t) => t.id === templateId)
+  if (item) item.split = structuredClone(split)
 }
 
 export function removeItem(draft: AppData, id: string) {
@@ -577,4 +600,16 @@ export function itemsWithRecentDefaults(data: Pick<AppData, "items" | "current" 
       ? { ...item, defaultAmountCents: recent[item.id] }
       : item
   )
+}
+
+// ------------------------------------------------------------ setting up ---
+
+/** Ticks a setup step off by hand, or puts it back. */
+export function setSetupReviewed(
+  draft: AppData,
+  id: SetupStepId,
+  reviewed: boolean
+) {
+  const seen = draft.prefs.reviewed.filter((step) => step !== id)
+  draft.prefs.reviewed = reviewed ? [...seen, id] : seen
 }

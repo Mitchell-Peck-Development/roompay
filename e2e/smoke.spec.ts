@@ -19,8 +19,18 @@ async function setUp(page: Page, roommate = "Biscuit", movedIn?: string) {
   await page.getByLabel("Nickname").fill(roommate)
   if (movedIn) await page.getByLabel(/Moved in/).fill(movedIn)
   await page.getByRole("button", { name: "Next" }).click()
-  await page.getByRole("button", { name: /^Start / }).click()
+  await page.getByLabel("Rent", { exact: true }).fill("1648")
+  await page.getByRole("button", { name: /finish setting up/i }).click()
+  // Setting up lands on the checklist, not on a month whose amounts would
+  // only count for that month.
+  await expect(page.getByTestId("setup-progress")).toBeVisible()
+  await openTab(page, "Month")
   await expect(page.getByText("This month's bill")).toBeVisible()
+}
+
+/** Either nav — the header one on desktop, the bottom bar on a phone. */
+function openTab(page: Page, label: string) {
+  return page.getByRole("navigation").first().getByRole("button", { name: label }).click()
 }
 
 async function enterBill(page: Page) {
@@ -126,9 +136,13 @@ test("a backup moves everything to another device", async ({ page, browser }, te
   const other = await newDevice(browser)
   await other.goto("/app")
   await other.locator('input[type="file"]').setInputFiles(file)
+  // A device that has only just been handed the data opens on the checklist,
+  // same as any household with steps left.
+  await expect(other.getByTestId("setup-progress")).toBeVisible()
+  await openTab(other, "Month")
   await expect(other.getByText("This month's bill")).toBeVisible()
   await expect(other.getByTestId("share-3012-B")).toHaveText("$955.00")
-  await other.getByRole("navigation").first().getByRole("button", { name: "History" }).click()
+  await openTab(other, "History")
   await expect(other.getByText("$1,910.00")).toBeVisible()
 })
 
@@ -182,8 +196,37 @@ test("a mid-month arrival gets a catch-up, and that month is never billed twice"
 
   // Settling it hands the months back to the usual flow.
   await page.getByRole("button", { name: "Mark the catch-up settled" }).click()
-  await page.getByRole("navigation").first().getByRole("button", { name: "Month" }).click()
+  await openTab(page, "Month")
   await expect(page.getByRole("button", { name: /Publish|Send/ }).first()).toBeVisible()
+})
+
+test("the checklist carries the setup, and the app opens on it until it's done", async ({ page }) => {
+  await setUp(page)
+  // Every tab carries the way back to it.
+  await expect(page.getByText(/Finish setting up · \d of 6/)).toBeVisible()
+  await openTab(page, "Setup")
+
+  const checklist = page.getByTestId("setup-progress")
+  await expect(checklist).toContainText("Next: Say what each bill costs")
+
+  // "Set up" on a step takes you to the card that does it — where switching a
+  // charge off counts as answering it, same as giving it an amount.
+  await checklist.getByRole("button", { name: /Set up/ }).first().click()
+  for (const label of ["Service fee", "Trash disposal"]) {
+    await page.getByRole("switch", { name: `Include ${label} each month` }).click()
+  }
+  await expect(checklist).toContainText("Next: Check when each bill covers")
+
+  // The three judgement calls are ticked off by hand.
+  for (const name of [/when each bill covers/, /default split/, /payment options/]) {
+    await checklist.getByRole("checkbox", { name }).click()
+  }
+  await expect(checklist).toContainText("here's what to do with it")
+
+  // Set up now, so a fresh visit opens on the month instead of the checklist.
+  await page.goto("/app")
+  await expect(page.getByText("This month's bill")).toBeVisible()
+  await expect(page.getByText(/Finish setting up ·/)).toHaveCount(0)
 })
 
 test("a share opens onto that roommate's part of every line", async ({ page }) => {

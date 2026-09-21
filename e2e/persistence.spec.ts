@@ -8,7 +8,8 @@ async function setUpWithBill(page: Page) {
   await page.getByRole("button", { name: "Next" }).click()
   await page.getByLabel("Nickname").fill("Biscuit")
   await page.getByRole("button", { name: "Next" }).click()
-  await page.getByRole("button", { name: /^Start / }).click()
+  await page.getByRole("button", { name: /finish setting up/i }).click()
+  await page.getByRole("navigation").first().getByRole("button", { name: "Month" }).click()
   for (const [label, amount] of Object.entries(BILL)) {
     await page.getByLabel(label, { exact: true }).fill(amount)
   }

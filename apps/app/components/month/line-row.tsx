@@ -3,8 +3,10 @@
 import {
   type ComputedLine,
   type LineMeter,
+  type MonthLine,
   type Participant,
   type Period,
+  formatMoney,
   formatShortDate,
   meterDetail,
   meterUsage,
@@ -90,7 +92,7 @@ export function LineRow({
         {line.oneOff ? (
           <Badge variant="secondary">{isCredit ? "credit" : "one-time"}</Badge>
         ) : (
-          <span className="text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
+          <UsualAmount line={line} />
         )}
         <BillPopover line={line} period={period} amount={false}>
           <button
@@ -120,6 +122,7 @@ export function LineRow({
           ) : (
             <LineSplitPopover
               lineId={line.id}
+              templateId={line.templateId}
               split={line.split}
               people={people}
               onChange={(split) => actions.setLineSplit(line.id, split)}
@@ -133,6 +136,24 @@ export function LineRow({
 
       {computed.prorated && <ProrationNote computed={computed} people={people} />}
     </div>
+  )
+}
+
+/**
+ * Which of this line's numbers outlive the month. A new amount on a fixed
+ * charge quietly becomes what every month after starts from — so it says so,
+ * rather than leaving a typo to turn into next month's rent.
+ */
+function UsualAmount({ line }: { line: MonthLine }) {
+  const data = useData()
+  const usual = data.items.find((t) => t.id === line.templateId)?.defaultAmountCents
+  if (line.kind !== "fixed" || usual === undefined) {
+    return <span className="text-muted-foreground italic">{KIND_HINT[line.kind]}</span>
+  }
+  return (
+    <span className="text-muted-foreground italic">
+      every month: {formatMoney(usual, data.household.currency)}
+    </span>
   )
 }
 

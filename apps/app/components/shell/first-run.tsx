@@ -1,6 +1,6 @@
 "use client"
 
-import { formatPeriod, periodOf, todayISO } from "@workspace/core"
+import { periodOf, todayISO } from "@workspace/core"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -29,7 +29,10 @@ export function FirstRun() {
   const [step, setStep] = React.useState<Step>("place")
   const [household, setHousehold] = React.useState("")
   const [roommates, setRoommates] = React.useState<Roommate[]>([{ nickname: "", movedIn: null }])
-  const [rentCents, setRentCents] = React.useState<number | null>(null)
+  // Every fixed charge, not just the rent: each one it can't price is a line
+  // the checklist will ask about later anyway.
+  const fixed = data.items.filter((item) => item.enabled && item.kind === "fixed")
+  const [amounts, setAmounts] = React.useState<Record<string, number | null>>({})
 
   const named = roommates.filter((r) => r.nickname.trim())
   const thisMonth = periodOf(todayISO())
@@ -49,9 +52,11 @@ export function FirstRun() {
       }
     }
 
-    if (rentCents !== null) {
-      const rent = data.items.find((item) => item.label === "Rent")
-      if (rent) actions.upsertItem({ ...rent, defaultAmountCents: rentCents })
+    for (const item of fixed) {
+      const cents = amounts[item.id]
+      if (cents !== null && cents !== undefined) {
+        actions.setItemDefaultAmount(item.id, cents)
+      }
     }
 
     for (const person of partial) {
@@ -84,7 +89,7 @@ export function FirstRun() {
           {step === "roommates" &&
             "Nicknames only. If you know when someone moved in, say so — it decides whether they owe a full month or only part of one."}
           {step === "bills" &&
-            "Rent, a service fee, trash, sewer, water and power are set up for you. Put in the rent now and fill the rest in from the statement each month."}
+            "These are the charges that don't move. Water, sewer and power come off the statement each month, so there's nothing to type for them yet."}
         </p>
       </div>
 
@@ -194,19 +199,39 @@ export function FirstRun() {
             finish()
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rent">Rent each month</Label>
-            <MoneyInput id="rent" className="w-40" value={rentCents} onCommit={setRentCents} />
+          <div className="flex flex-col divide-y rounded-xl bg-card px-3 ring-1 ring-foreground/10">
+            {fixed.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                <Label htmlFor={`amount-${item.id}`} className="min-w-0 truncate">
+                  {item.label}
+                </Label>
+                <MoneyInput
+                  id={`amount-${item.id}`}
+                  className="w-32"
+                  value={amounts[item.id] ?? null}
+                  onCommit={(cents) => setAmounts((all) => ({ ...all, [item.id]: cents }))}
+                />
+              </div>
+            ))}
           </div>
           <p className="rounded-lg bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">
-            Water, sewer and power are set to bill a month behind, the way most utilities do — so a roommate
-            only pays for the days they were actually here. You can change any of that in Setup.
+            Leave anything this place doesn&apos;t pay empty — you can switch it off in a moment. Water, sewer
+            and power are set to bill a month behind, the way most utilities do, so a roommate only pays for
+            the days they were actually here.
           </p>
           <Button type="submit" size="lg" className="h-11">
-            <Check /> Start {formatPeriod(thisMonth)}
+            <Check /> Next: finish setting up
           </Button>
           {back}
         </form>
+      )}
+
+      {step === "bills" && (
+        <p className="text-center text-xs leading-relaxed text-pretty text-muted-foreground">
+          A few things still decide whether the numbers come out right — when each bill covers, how it splits,
+          how a roommate can pay it. They&apos;re waiting as a checklist you can work through now or whenever
+          you get to it.
+        </p>
       )}
 
       <div className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground">
