@@ -69,6 +69,8 @@ export type CatchupResult = {
   plan: Plan
 }
 
+// Also named in rp.pick (supabase/migrations/20260921000000_rp_pick_preference.sql), which keeps a
+// pick of this plan from becoming the link's preference for later months.
 export const CATCHUP_PLAN_KEY = "catchup"
 
 /**
