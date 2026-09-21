@@ -232,15 +232,16 @@ test("the checklist carries the setup, and the app opens on it until it's done",
 test("a bill can run on a meter cycle, not a calendar month", async ({ page }) => {
   await setUp(page)
 
-  // Power is read on the 28th and billed two months later: the statement
-  // being worked on now covers the 28th of two months ago to the 27th of last.
+  // Power is read on the 28th and billed for last month, so the statement
+  // being worked on now covers the 28th of two months ago to the 28th of
+  // last month — a period that has closed before the bill is asked for.
   await openTab(page, "Setup")
   await page.getByRole("button", { name: "Edit Power" }).click()
-  await page.getByRole("radio", { name: "2 months back" }).click()
+  await page.getByRole("radio", { name: "Last month" }).click()
   await page.getByLabel("Read on the…").fill("28")
   await expect(page.getByRole("dialog")).toContainText("this covers")
   await page.getByRole("button", { name: "Save" }).click()
-  await expect(page.getByText(/Covers 2 months back, from the 28th/)).toBeVisible()
+  await expect(page.getByText(/Covers last month, 28th to 28th/)).toBeVisible()
 
   // The rule reaches the month being billed, dates and all.
   const now = new Date()
@@ -251,7 +252,7 @@ test("a bill can run on a meter cycle, not a calendar month", async ({ page }) =
   await openTab(page, "Month")
   await page.getByRole("button", { name: "Period and due date for Power" }).click()
   await expect(page.getByLabel("From")).toHaveValue(day(2, 28))
-  await expect(page.getByLabel("To")).toHaveValue(day(1, 27))
+  await expect(page.getByLabel("To")).toHaveValue(day(1, 28))
 })
 
 test("a share opens onto that roommate's part of every line", async ({ page }) => {

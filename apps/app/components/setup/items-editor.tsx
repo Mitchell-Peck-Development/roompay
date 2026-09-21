@@ -53,7 +53,7 @@ function coversLabel(item: ItemTemplate): string {
     offsetMonths === 0 ? "this month" : offsetMonths === 1 ? "last month" : `${offsetMonths} months back`
   const months =
     spanMonths === 1 ? `Covers ${back}` : `Covers ${spanMonths} months, up to ${back}`
-  return startDay ? `${months}, from the ${ordinal(startDay)}` : months
+  return startDay === undefined ? months : `${months}, ${ordinal(startDay)} to ${ordinal(startDay)}`
 }
 
 /** Whether this item's coverage is worth spelling out in the list. */

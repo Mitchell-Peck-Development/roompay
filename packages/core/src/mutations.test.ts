@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest"
+import { coverageOf } from "./coverage"
 import { createInitialData } from "./defaults"
 import * as M from "./mutations"
 import { type AppData, appDataSchema } from "./schema"
@@ -70,18 +71,19 @@ describe("line items", () => {
   })
 
   it("takes a cycle set on one month as the item's rule from then on", () => {
-    // Power read on the 28th, two months behind: this month's line is redrawn
-    // by hand, then made the rule.
-    M.setLineCoverage(data, line("Power").id, { start: "2026-07-28", end: "2026-08-27" }, now)
+    // Power read on the 28th: September's bill is for 28 July – 28 August.
+    // The window is drawn by hand on this month, then made the rule.
+    M.setLineCoverage(data, line("Power").id, { start: "2026-07-28", end: "2026-08-28" }, now)
     expect(item("Power").coverage).toEqual({ offsetMonths: 1, spanMonths: 1 })
 
-    M.setItemCoverage(data, item("Power").id, { offsetMonths: 2, spanMonths: 1, startDay: 28 })
-    expect(item("Power").coverage).toEqual({ offsetMonths: 2, spanMonths: 1, startDay: 28 })
+    const rule = coverageOf(data.current.period, line("Power").covers!)
+    expect(rule).toEqual({ offsetMonths: 1, spanMonths: 1, startDay: 28 })
+    M.setItemCoverage(data, item("Power").id, rule!)
     // The month already open keeps the window it was given.
-    expect(line("Power").covers).toEqual({ start: "2026-07-28", end: "2026-08-27" })
-    // And the next month starts from the rule.
+    expect(line("Power").covers).toEqual({ start: "2026-07-28", end: "2026-08-28" })
+    // And the next statement moves on by exactly one cycle.
     M.startNewMonth(data, "2026-10", now)
-    expect(line("Power").covers).toEqual({ start: "2026-08-28", end: "2026-09-27" })
+    expect(line("Power").covers).toEqual({ start: "2026-08-28", end: "2026-09-28" })
   })
 
   it("sets an item's usual amount on its own, and clears it", () => {

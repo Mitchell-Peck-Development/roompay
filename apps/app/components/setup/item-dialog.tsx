@@ -239,15 +239,15 @@ function ItemForm({ initial, onClose }: { initial: ItemTemplate; onClose(): void
                 patch({
                   coverage: normalizeCoverage({
                     ...coverage,
-                    startDay: day >= 1 && day <= 31 ? day : 1,
+                    startDay: day >= 1 && day <= 31 ? day : undefined,
                   }),
                 })
               }}
             />
             <span className="text-xs text-muted-foreground">
-              {coverage.startDay
-                ? `The ${ordinal(coverage.startDay)} to the day before the next.`
-                : "Whole calendar months. Set the meter-reading day for a cycle that isn't."}
+              {coverage.startDay === undefined
+                ? "Whole calendar months. Set the meter-reading day for a cycle that isn't."
+                : `Runs to the ${ordinal(coverage.startDay)} of the month it bills for, from the ${ordinal(coverage.startDay)} ${coverage.spanMonths === 1 ? "a month" : `${coverage.spanMonths} months`} earlier.`}
             </span>
           </div>
         </div>

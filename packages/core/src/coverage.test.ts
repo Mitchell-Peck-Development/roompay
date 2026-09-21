@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addDays, nextPeriod, shiftPeriod } from "./dates"
+import { nextPeriod, shiftPeriod } from "./dates"
 import {
   SAME_MONTH,
   coverageOf,
@@ -58,51 +58,68 @@ describe("coverageWindow", () => {
       { offsetMonths: 1, spanMonths: 1, startDay: 28 },
       { offsetMonths: 2, spanMonths: 1, startDay: 3 },
       { offsetMonths: 0, spanMonths: 2, startDay: 15 },
+      { offsetMonths: 1, spanMonths: 1, startDay: 1 },
     ]
     for (const coverage of rules) {
       expect(coverageOf("2026-09", coverageWindow("2026-09", coverage))).toEqual(coverage)
     }
-    // A stretch that doesn't tile — the next bill would overlap it by a week —
-    // isn't a rule any month could repeat.
+    // A stretch that starts and ends on different days of the month isn't a
+    // cycle any month could repeat.
     expect(coverageOf("2026-09", { start: "2026-08-03", end: "2026-09-10" })).toBeNull()
     // Nor is one that covers time after the bill was even issued.
     expect(coverageOf("2026-09", { start: "2026-11-01", end: "2026-11-30" })).toBeNull()
   })
 
-  it("runs a meter cycle from its reading day to the day before the next", () => {
-    // Power read on the 28th, billed two months later, due the 1st after that:
-    // September's statement is for 28 July – 27 August.
-    const cycle = { offsetMonths: 2, spanMonths: 1, startDay: 28 }
+  it("runs a meter cycle to the reading day of the month it bills for", () => {
+    // Power read on the 28th, billed for last month and due on the 21st of
+    // the month it lands in: September's statement is 28 July – 28 August,
+    // and the money is asked for after that period has closed.
+    const cycle = { offsetMonths: 1, spanMonths: 1, startDay: 28 }
     expect(coverageWindow("2026-09", cycle)).toEqual({
       start: "2026-07-28",
-      end: "2026-08-27",
+      end: "2026-08-28",
     })
-    // Consecutive statements meet exactly: no day billed twice, none missed.
+    expect(dueDateFor("2026-09", { offsetMonths: 0, day: 21 })).toBe("2026-09-21")
+    // October's statement moves on by exactly one cycle.
     expect(coverageWindow("2026-10", cycle)).toEqual({
       start: "2026-08-28",
-      end: "2026-09-27",
+      end: "2026-09-28",
     })
-    // A day past the end of a short month lands on its last day.
-    const late = { offsetMonths: 0, spanMonths: 1, startDay: 31 }
-    expect(coverageWindow("2026-02", late)).toEqual({ start: "2026-02-28", end: "2026-03-30" })
-    expect(coverageWindow("2026-03", late)).toEqual({ start: "2026-03-31", end: "2026-04-29" })
-    expect(coverageWindow("2026-04", late)).toEqual({ start: "2026-04-30", end: "2026-05-30" })
 
-    // Whatever the day, a year of statements tiles: each one picks up where
-    // the last left off, so no day of service is billed twice or missed.
+    // The reading day is the boundary, so it closes one statement and opens
+    // the next — the same way the meter reading itself does.
     for (const startDay of [1, 15, 28, 30, 31]) {
       for (let i = 0; i < 12; i++) {
         const period = shiftPeriod("2026-01", i)
-        const here = coverageWindow(period, { offsetMonths: 1, spanMonths: 1, startDay })
-        const next = coverageWindow(nextPeriod(period), { offsetMonths: 1, spanMonths: 1, startDay })
-        expect(addDays(here.end, 1)).toBe(next.start)
+        const rule = { offsetMonths: 1, spanMonths: 1, startDay }
+        expect(coverageWindow(period, rule).end).toBe(
+          coverageWindow(nextPeriod(period), rule).start
+        )
       }
     }
-    // The 1st is plain calendar months, and is stored that way.
-    expect(coverageWindow("2026-09", { offsetMonths: 0, spanMonths: 1, startDay: 1 })).toEqual(
-      coverageWindow("2026-09")
-    )
-    expect(normalizeCoverage({ offsetMonths: 0, spanMonths: 1, startDay: 1 })).toEqual(SAME_MONTH)
+
+    // A quarterly cycle reaches back three months from its reading day.
+    expect(coverageWindow("2026-09", { offsetMonths: 1, spanMonths: 3, startDay: 28 })).toEqual({
+      start: "2026-05-28",
+      end: "2026-08-28",
+    })
+
+    // A day past the end of a short month lands on its last day.
+    expect(coverageWindow("2026-03", { offsetMonths: 1, spanMonths: 1, startDay: 31 })).toEqual({
+      start: "2026-01-31",
+      end: "2026-02-28",
+    })
+
+    // No day at all is plain calendar months; the 1st is a reading day like
+    // any other, and means something different.
+    expect(coverageWindow("2026-09", { offsetMonths: 1, spanMonths: 1 })).toEqual({
+      start: "2026-08-01",
+      end: "2026-08-31",
+    })
+    expect(coverageWindow("2026-09", { offsetMonths: 1, spanMonths: 1, startDay: 1 })).toEqual({
+      start: "2026-07-01",
+      end: "2026-08-01",
+    })
     expect(normalizeCoverage({ offsetMonths: 0, spanMonths: 1, startDay: 99 })).toEqual({
       offsetMonths: 0,
       spanMonths: 1,

@@ -170,13 +170,14 @@ money between people; it only moves the bill around the calendar.
   back*, and how many months one bill spans. Rent and fees default to the month they're billed in;
   water, sewer and power default to the month before.
 - **A meter isn't read on the 1st**, so an item can also carry the day its cycle turns over
-  (`coverage.startDay`). A window then runs from that day to the day before the next one — power
-  read on the 28th and billed two months later covers *Jul 28 – Aug 27* on September's statement,
-  and October's picks up on *Aug 28*. Consecutive statements meet exactly: no day of service is
-  billed twice or missed, whatever the day, including the 31st in a short month (it lands on the
-  last day, and the next window still starts the day after). The 1st is plain calendar months and
-  is stored that way. Setup shows the rule worked out against the month you're billing, so it can
-  be checked rather than imagined.
+  (`coverage.startDay`). The offset still names the month the service *ends* in, so power read on
+  the 28th and billed for last month covers *28 Jul – 28 Aug* on September's statement, due
+  whenever you say — 21 September, in a real one. October's is *28 Aug – 28 Sep*. Both ends are
+  inclusive, as everywhere else here, so the reading day closes one statement and opens the next,
+  the way the reading itself does. A day past the end of a short month lands on its last day.
+  Leaving the day empty is plain calendar months; the 1st is a reading day like any other and
+  means something different (*1 Jul – 1 Aug*). Setup shows the rule worked out against the month
+  you're billing, so it can be checked rather than imagined.
 - **Either direction.** A window redrawn by hand on the Month tab offers to become the item's rule
   (*Cover this stretch every month*) whenever it's one a month could repeat — `coverageOf` reads a
   window back into a rule and only accepts it if rebuilding it gives the same dates, so a one-off

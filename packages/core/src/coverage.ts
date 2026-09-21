@@ -1,7 +1,6 @@
 import {
   type ISODate,
   type Period,
-  addDays,
   dateInPeriod,
   diffDays,
   firstOfPeriod,
@@ -38,19 +37,27 @@ export function normalizeCoverage(coverage?: Coverage): Coverage {
     offsetMonths: clamp(coverage.offsetMonths, 0, 24),
     spanMonths: clamp(coverage.spanMonths, 1, 12),
   }
-  // The 1st *is* whole calendar months, so it's stored as the plain form.
-  const startDay = coverage.startDay ? clamp(coverage.startDay, 1, 31) : 1
-  if (startDay > 1) normalized.startDay = startDay
+  // No day at all means whole calendar months. The 1st is a real reading day
+  // and means something else — the 1st of one month to the 1st of the next.
+  if (coverage.startDay !== undefined) {
+    normalized.startDay = clamp(coverage.startDay, 1, 31)
+  }
   return normalized
 }
 
 /**
  * The service window a bill on `period`'s statement pays for.
  *
- * With a cycle day the window runs from that day to the day before it, so
- * consecutive bills meet exactly: a meter read on the 28th gives 28 Aug – 27
- * Sep, and the next bill picks up on the 28th. Day 31 lands on the last day
- * of a short month, and the following window still starts the day after.
+ * `offsetMonths` names the month the service *ends* in: 1 on September's
+ * statement is August's service, whether that's the whole calendar month or
+ * a meter cycle. With a reading day the window runs from that day to the
+ * same day of the month it's billed for — read on the 28th, a bill on
+ * September's statement covers 28 July – 28 August, and the money isn't
+ * asked for until after the period has actually finished.
+ *
+ * Both ends are inclusive, as they are everywhere else here, so the reading
+ * day itself shows up on the statement that closes on it and on the one that
+ * opens on it — which is what a meter read on that day does.
  */
 export function coverageWindow(
   period: Period,
@@ -59,12 +66,12 @@ export function coverageWindow(
   const { offsetMonths, spanMonths, startDay } = normalizeCoverage(coverage)
   const last = shiftPeriod(period, -offsetMonths)
   const first = shiftPeriod(last, -(spanMonths - 1))
-  if (!startDay) {
+  if (startDay === undefined) {
     return { start: firstOfPeriod(first), end: lastOfPeriod(last) }
   }
   return {
-    start: dateInPeriod(first, startDay),
-    end: addDays(dateInPeriod(nextPeriod(last), startDay), -1),
+    start: dateInPeriod(prevPeriod(first), startDay),
+    end: dateInPeriod(last, startDay),
   }
 }
 
@@ -137,14 +144,16 @@ export function coverageOf(
   period: Period,
   window: ServiceWindow
 ): Coverage | null {
-  const first = periodOf(window.start)
   const wholeMonths = isWholeMonths(window)
-  const last = wholeMonths ? periodOf(window.end) : prevPeriod(periodOf(addDays(window.end, 1)))
+  const last = periodOf(window.end)
+  // A cycle's first month is the one after the month it starts in: the window
+  // reaches back over the day it opens on.
+  const first = wholeMonths ? periodOf(window.start) : nextPeriod(periodOf(window.start))
   const candidate: Coverage = {
     offsetMonths: monthsBetween(last, period),
     spanMonths: monthsBetween(first, last) + 1,
   }
-  if (!wholeMonths) candidate.startDay = Number(window.start.slice(8, 10))
+  if (!wholeMonths) candidate.startDay = Number(window.end.slice(8, 10))
   if (candidate.offsetMonths < 0 || candidate.spanMonths < 1) return null
 
   const rebuilt = coverageWindow(period, candidate)
@@ -220,9 +229,9 @@ export function describeCoverage(coverage?: Coverage): string {
     spanMonths === 1
       ? `Covers ${ending}.`
       : `Covers ${spanMonths} months, ending with ${ending}.`
-  if (!startDay) return months
-  const cycle = `Reads on the ${ordinal(startDay)}, so it runs from the ${ordinal(startDay)} to the day before.`
-  return `${months} ${cycle}`
+  if (startDay === undefined) return months
+  const earlier = spanMonths === 1 ? "a month earlier" : `${spanMonths} months earlier`
+  return `${months} Read on the ${ordinal(startDay)}, so it runs to the ${ordinal(startDay)} of that month from the ${ordinal(startDay)} ${earlier}.`
 }
 
 /** True when a bill pays for service before the month it's billed in. */

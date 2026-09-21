@@ -40,9 +40,11 @@ function describeCycle(coverage: Coverage): string {
         : `${coverage.offsetMonths} months back`
   const months =
     coverage.spanMonths === 1 ? back : `${coverage.spanMonths} months, ending ${back}`
-  return coverage.startDay
-    ? `the ${ordinal(coverage.startDay)} onwards, ${months}`
-    : months
+  return coverage.startDay === undefined
+    ? months
+    : `the ${ordinal(coverage.startDay)} to the ${ordinal(coverage.startDay)}, ending ${
+        coverage.offsetMonths === 0 ? "in the month it's billed" : back
+      }`
 }
 
 const PRESETS = [
