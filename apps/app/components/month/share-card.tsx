@@ -8,6 +8,7 @@ import {
   paidTotal,
   payloadHash,
   pickPlan,
+  publishedPlans,
 } from "@workspace/core"
 import {
   AlertDialog,
@@ -83,6 +84,14 @@ export function ShareCard({
   const isPublished = Boolean(link && published && !(status?.ok && !remote) && !linkGone)
   const changed = isPublished && hash !== null && hash !== published?.hash
 
+  // Links published before this device kept a copy of the schedules: take the server's copy, once,
+  // so a bill corrected after they've started paying still leaves their paid payments alone.
+  const remotePlans = remote?.plans
+  React.useEffect(() => {
+    if (!published || published.plans || !remotePlans) return
+    actions.setPublished(statement, personId, { ...published, plans: remotePlans })
+  }, [published, remotePlans, statement, personId])
+
   // What's been received lives on this device; the server keeps a copy of the
   // total so the roommate's calendar can say "Paid". Whenever the two differ —
   // a payment marked or undone, or marked while offline — send the local one.
@@ -134,7 +143,12 @@ export function ShareCard({
       toast.error(shareErrorMessage(result.error, result.missing))
       return
     }
-    actions.setPublished(statement, personId, { at: new Date().toISOString(), hash: payloadHash(payload) })
+    actions.setPublished(statement, personId, {
+      at: new Date().toISOString(),
+      hash: payloadHash(payload),
+      // Kept so a bill corrected after they've started paying leaves their paid payments alone.
+      plans: publishedPlans(payload),
+    })
     setJustPublished(true)
     void refresh()
     if (options.share) await share(secrets.token)

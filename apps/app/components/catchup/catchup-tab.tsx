@@ -89,8 +89,10 @@ export function CatchupTab() {
   }
   const payload =
     result.combinedCents > 0
-      ? buildCatchupPayload({ result, record, currency: data.household.currency })
+      ? buildCatchupPayload({ result, record, cadences: data.cadences, currency: data.household.currency })
       : null
+  // Your installments as they'll go out — reconciled, once they've started paying.
+  const ownerPlan = payload?.plans.find((p) => p.key === result.plan.key) ?? result.plan
 
   return (
     <>
@@ -112,8 +114,9 @@ export function CatchupTab() {
               {monthList} {months.length > 1 ? "are" : "is"} billed here, not on the Month tab
             </p>
             <p className="mt-1 leading-relaxed">
-              {who} gets one plan covering {months.length > 1 ? "both months" : "it"}, so they&apos;re never asked
-              for the same month twice. Their share still shows in each month&apos;s ledger.
+              {who} settles {months.length > 1 ? "both months" : "it"} in one catch-up, on whichever schedule they
+              pick, so they&apos;re never asked for the same month twice. Their share still shows in each
+              month&apos;s ledger.
             </p>
           </>
         )}
@@ -242,7 +245,7 @@ export function CatchupTab() {
 
       <SectionCard
         title="Smoothed catch-up plan"
-        description="Equal installments, evenly spaced between the two dates."
+        description={`Equal installments, evenly spaced between the two dates. ${who} sees this first, and can pick one of your usual schedules instead.`}
       >
         <div className="grid gap-3 min-[420px]:grid-cols-2">
           <div className="flex flex-col gap-1.5">
@@ -298,7 +301,7 @@ export function CatchupTab() {
             </tr>
           </thead>
           <tbody>
-            {result.plan.payments.map((payment) => (
+            {ownerPlan.payments.map((payment) => (
               <tr key={payment.date} className="border-b border-dashed last:border-0">
                 <td className="tabular py-2.5">{formatLongDate(payment.date)}</td>
                 <td className="py-2.5 text-muted-foreground">{payment.label}</td>

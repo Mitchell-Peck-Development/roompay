@@ -105,7 +105,8 @@ export function MonthTab({ onOpenCatchup }: { onOpenCatchup?: () => void }) {
                 title="Payment options"
                 description={`Ways for ${person.nickname || "your roommate"} to pay across the month instead of one lump sum.`}
               >
-                <PlanCards plans={plans} shareCents={shareCents} />
+                {/* What they'll actually be offered — reconciled once they've started paying. */}
+                <PlanCards plans={payload?.plans ?? plans} shareCents={shareCents} />
               </SectionCard>
 
               <ShareCard
