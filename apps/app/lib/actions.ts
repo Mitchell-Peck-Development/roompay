@@ -108,4 +108,6 @@ export const actions = {
   markBackup: () => run((d) => void (d.meta.lastBackupAt = new Date().toISOString())),
   dismissInstallNudge: () =>
     run((d) => void (d.meta.installNudgeDismissedAt = new Date().toISOString())),
+  dismissTipNudge: () =>
+    run((d) => void (d.meta.tipNudgeDismissedAt = new Date().toISOString())),
 }

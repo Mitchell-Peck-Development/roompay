@@ -320,3 +320,25 @@ private.
 Safari deletes a site's storage after seven days of browser use without a visit, and a monthly tool would hit
 that. Home Screen apps are exempt, so the app is an installable PWA, iPhone users are nudged to install early
 (and to export first, because the installed app starts empty), and the app asks for persistent storage.
+
+## Paying for it
+
+RoomPay is free and there's no paid tier. The money logic all runs on the owner's device, from
+open source, so a gate on it would be theatre — and gating a household by how many roommates it
+has would paywall exactly the case the app is best at. Publishing a link is the only thing that
+costs anything to run, so the ask is a tip jar and nothing else.
+
+One constant switches it on: put your Ko-fi handle in `KOFI_HANDLE` in `apps/app/lib/support.ts`.
+Leave it empty and every tip surface disappears, which is how a fork or a self-hosted copy turns
+the asking off.
+
+| where | when |
+| --- | --- |
+| Landing page | a "Why it's free" band after the FAQ, and a footer link |
+| Setup → **Support RoomPay** | always, sitting under Privacy |
+| The share card | once, just after a statement publishes — and only from the second saved month on |
+
+A first-timer is never asked: the app has to have done a couple of months' work first. Dismissing
+the nudge, or following it, retires it for good — that's `meta.tipNudgeDismissedAt`, which travels
+in the backup file like everything else. Every tip link is `rel="noopener noreferrer"` and opens
+Ko-fi in a new tab, so nothing follows the person out, not even the page they came from.

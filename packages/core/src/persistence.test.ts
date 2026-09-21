@@ -57,6 +57,7 @@ function richData(): AppData {
   M.startNewMonth(data, "2026-10", now)
   data.meta.lastBackupAt = now.toISOString()
   data.meta.installNudgeDismissedAt = now.toISOString()
+  data.meta.tipNudgeDismissedAt = now.toISOString()
   return data
 }
 

@@ -37,8 +37,10 @@ import { actions } from "@/lib/actions"
 import { copyText, shareOrCopy } from "@/lib/download"
 import { shareClient, shareErrorMessage } from "@/lib/share-client"
 import { useData } from "@/lib/store"
+import { SUPPORT_URL, shouldShowTipNudge } from "@/lib/support"
 import { useLinkStatus } from "@/lib/use-link-status"
 import { PaidTracker } from "./paid-tracker"
+import { TipNudge } from "./tip-nudge"
 
 type Props = {
   personId: string
@@ -69,6 +71,7 @@ export function ShareCard({
   const { status, refresh } = useLinkStatus(link?.token)
   const [busy, setBusy] = React.useState(false)
   const [confirmRevoke, setConfirmRevoke] = React.useState(false)
+  const [justPublished, setJustPublished] = React.useState(false)
 
   const hash = payload ? payloadHash(payload) : null
   const linkGone = Boolean(link && status && !status.ok)
@@ -101,6 +104,13 @@ export function ShareCard({
       })
   }, [link, isPublished, remoteReceived, receivedCents, period, statement.kind, refresh])
 
+  const showTip = shouldShowTipNudge({
+    savedMonths: data.months.length,
+    dismissedAt: data.meta.tipNudgeDismissedAt,
+    justPublished,
+    supportUrl: SUPPORT_URL,
+  })
+
   const url = link
     ? `${typeof window === "undefined" ? "" : window.location.origin}/r/${link.token}/${period}${
         statement.kind === "catchup" ? "?kind=catchup" : ""
@@ -125,6 +135,7 @@ export function ShareCard({
       return
     }
     actions.setPublished(statement, personId, { at: new Date().toISOString(), hash: payloadHash(payload) })
+    setJustPublished(true)
     void refresh()
     if (options.share) await share(secrets.token)
     else toast.success(`Link updated — ${who} will see the new numbers.`)
@@ -289,6 +300,8 @@ export function ShareCard({
             </p>
           </div>
         )}
+
+        {showTip && <TipNudge who={who} />}
 
         {payload && plan && (
           <>

@@ -204,6 +204,7 @@ export const appDataSchema = z.object({
     updatedAt: timestamp,
     lastBackupAt: timestamp.optional(),
     installNudgeDismissedAt: timestamp.optional(),
+    tipNudgeDismissedAt: timestamp.optional(),
   }),
 })
 

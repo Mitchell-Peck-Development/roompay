@@ -143,6 +143,15 @@ describe("parseAppData", () => {
     expect(result.data.meta.createdAt).toBe(now.toISOString())
   })
 
+  it("remembers a dismissed tip nudge even when the document is damaged", () => {
+    const raw = stored(saved())
+    raw.meta.tipNudgeDismissedAt = "2026-09-20T09:00:00.000Z"
+    raw.split = { mode: "sideways" }
+
+    const result = parseAppData(raw, now)
+    expect(result.data.meta.tipNudgeDismissedAt).toBe("2026-09-20T09:00:00.000Z")
+  })
+
   it("starts fresh only when there's nothing to read", () => {
     for (const raw of [null, "nonsense", 42, []]) {
       const result = parseAppData(raw, now)
