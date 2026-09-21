@@ -1,5 +1,6 @@
 "use client"
 
+import { showCatchupTab } from "@workspace/core"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 import { CalendarDays, CalendarRange, History, ReceiptText, Settings2 } from "lucide-react"
@@ -54,6 +55,16 @@ export function AppShell() {
 
   React.useEffect(() => startPersistence(), [])
 
+  // The Catch-up tab only earns its place while someone is settling in —
+  // unless Setup says otherwise. Everything else is always there.
+  const catchup = showCatchupTab(data, data.current.period)
+  const tabs = React.useMemo(
+    () => TABS.filter((t) => t.id !== "catchup" || catchup),
+    [catchup]
+  )
+  // A tab that has just gone away can't stay open behind its own nav entry.
+  const open: TabId = tabs.some((t) => t.id === tab) ? tab : "month"
+
   if (!hydrated) return <ShellSkeleton />
   if (data.people.length === 0) return <FirstRun />
 
@@ -65,15 +76,15 @@ export function AppShell() {
           <h1 className="font-heading text-3xl font-semibold tracking-tight">RoomPay</h1>
         </div>
         <nav aria-label="Sections" className="hidden rounded-xl bg-muted p-1 sm:flex">
-          {TABS.map(({ id, label }) => (
+          {tabs.map(({ id, label }) => (
             <button
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              aria-current={tab === id ? "page" : undefined}
+              aria-current={open === id ? "page" : undefined}
               className={cn(
                 "rounded-lg px-3.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
-                tab === id && "bg-card text-foreground shadow-sm"
+                open === id && "bg-card text-foreground shadow-sm"
               )}
             >
               {label}
@@ -86,11 +97,13 @@ export function AppShell() {
       <InstallNudge />
 
       <main className="flex flex-col gap-4">
-        {tab === "bills" && <BillsTab />}
-        {tab === "month" && <MonthTab onOpenCatchup={() => setTab("catchup")} />}
-        {tab === "catchup" && <CatchupTab />}
-        {tab === "history" && <HistoryTab onOpen={() => setTab("month")} />}
-        {tab === "setup" && <SetupTab />}
+        {open === "bills" && <BillsTab />}
+        {open === "month" && (
+          <MonthTab onOpenCatchup={catchup ? () => setTab("catchup") : undefined} />
+        )}
+        {open === "catchup" && <CatchupTab />}
+        {open === "history" && <HistoryTab onOpen={() => setTab("month")} />}
+        {open === "setup" && <SetupTab />}
       </main>
 
       <footer className="mt-8 text-center text-xs text-muted-foreground">
@@ -102,16 +115,21 @@ export function AppShell() {
         aria-label="Sections"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
-        <div className="mx-auto grid max-w-2xl grid-cols-5">
-          {TABS.map(({ id, label, icon: Icon }) => (
+        <div
+          className={cn(
+            "mx-auto grid max-w-2xl",
+            tabs.length === 5 ? "grid-cols-5" : "grid-cols-4"
+          )}
+        >
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              aria-current={tab === id ? "page" : undefined}
+              aria-current={open === id ? "page" : undefined}
               className={cn(
                 "flex flex-col items-center gap-1 py-2.5 text-[0.6875rem] font-medium text-muted-foreground",
-                tab === id && "text-primary"
+                open === id && "text-primary"
               )}
             >
               <Icon className="size-5" aria-hidden />

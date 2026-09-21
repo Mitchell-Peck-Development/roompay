@@ -2,6 +2,7 @@
 
 import {
   type AppData,
+  type CatchupTabPref,
   type ISODate,
   type ItemSplit,
   type ItemTemplate,
@@ -48,6 +49,8 @@ export const actions = {
   removeCadence: (id: string) => run((d) => M.removeCadence(d, id)),
 
   setDefaultSplit: (split: Split) => run((d) => void (d.split = split)),
+  setCatchupTabPref: (catchupTab: CatchupTabPref) =>
+    run((d) => void (d.prefs = { ...d.prefs, catchupTab })),
   setMonthSplit: (split: Split) => run((d) => M.setMonthSplit(d, split)),
   setMonthTitle: (title: string) => run((d) => M.setMonthTitle(d, title)),
 

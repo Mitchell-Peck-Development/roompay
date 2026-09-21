@@ -1,4 +1,4 @@
-import { defaultCatchupDates } from "./catchup"
+import { defaultCatchupDates, newCatchupRecord } from "./catchup"
 import { coverageWindow, dueDateFor, dueRuleFrom, normalizeDue } from "./coverage"
 import type { ISODate, Period } from "./dates"
 import { lineFromTemplate, newMonth, toParticipant } from "./defaults"
@@ -493,15 +493,7 @@ export function ensureCatchup(
   // Residency set in Setup is the move-in date; only fall back to today when
   // there isn't one, so the two views never disagree the moment this opens.
   const moveIn = draft.people.find((p) => p.id === personId)?.from ?? today
-  const record: CatchupRecord = {
-    personId,
-    moveIn,
-    estimates: {},
-    includeNextMonth: true,
-    installments: 4,
-    ...defaultCatchupDates(moveIn),
-    paid: [],
-  }
+  const record = newCatchupRecord(personId, moveIn)
   draft.catchups[personId] = record
   return record
 }

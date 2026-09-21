@@ -7,6 +7,7 @@ import {
   type LinkSecrets,
   type MonthRecord,
   type Person,
+  type Prefs,
   type Split,
   appDataSchema,
   cadenceSchema,
@@ -16,6 +17,7 @@ import {
   monthLineSchema,
   monthRecordSchema,
   personSchema,
+  prefsSchema,
   splitSchema,
 } from "./schema"
 
@@ -153,6 +155,8 @@ export function parseAppData(raw: unknown, now = new Date()): LoadResult {
     "move-in catch-up",
     dropped
   )
+  const prefs = parser<Prefs>(prefsSchema)(stored.prefs ?? {})
+  if (!prefs) dropped.push("a display setting")
   const links = keepValidRecord(
     stored.links,
     parser<LinkSecrets>(linkSecretsSchema),
@@ -179,6 +183,7 @@ export function parseAppData(raw: unknown, now = new Date()): LoadResult {
     cadences: cadences.length > 0 ? cadences : fallback.cadences,
     current,
     catchups,
+    prefs: prefs ?? fallback.prefs,
     links,
     // Timestamps only, so a damaged one costs the date rather than the document.
     meta: { ...fallback.meta, ...timestamps(stored.meta), updatedAt: now.toISOString() },

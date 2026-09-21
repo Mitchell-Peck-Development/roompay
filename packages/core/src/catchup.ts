@@ -1,4 +1,4 @@
-import { coverageWindow } from "./coverage"
+import { coverageWindow, normalizeCoverage } from "./coverage"
 import {
   type ISODate,
   type Period,
@@ -7,6 +7,8 @@ import {
   diffDays,
   nextPeriod,
   periodOf,
+  prevPeriod,
+  shiftPeriod,
 } from "./dates"
 import type { Cents } from "./money"
 import { type Plan, scheduleEvenly } from "./plans"
@@ -14,6 +16,7 @@ import type {
   AppData,
   MonthRecord,
   CatchupRecord,
+  CatchupTabPref,
   ItemTemplate,
   MonthLine,
   Participant,
@@ -50,6 +53,8 @@ export type CatchupStatement = {
 export type CatchupResult = {
   lines: CatchupLine[]
   statements: CatchupStatement[]
+  /** The reference full month, item by item: its cost and their share of it. */
+  fullMonthLines: CatchupLine[]
   fullMonthTotalCents: Cents
   fullShareCents: Cents
   daysOccupied: number
@@ -88,6 +93,22 @@ export function defaultCatchupDates(moveIn: ISODate): {
   end: ISODate
 } {
   return { start: moveIn, end: `${nextPeriod(periodOf(moveIn))}-01` }
+}
+
+/** A catch-up as it starts out, before anything is filled in. */
+export function newCatchupRecord(
+  personId: string,
+  moveIn: ISODate
+): CatchupRecord {
+  return {
+    personId,
+    moveIn,
+    estimates: {},
+    includeNextMonth: true,
+    installments: 4,
+    ...defaultCatchupDates(moveIn),
+    paid: [],
+  }
 }
 
 /** A month's bills as they'd be billed, with each item's service window. */
@@ -205,6 +226,12 @@ export function computeCatchup(input: {
   return {
     lines: [...merged.values()],
     statements,
+    fullMonthLines: reference.lines.map((l) => ({
+      templateId: l.line.templateId ?? l.line.id,
+      label: l.line.label,
+      fullCents: l.amountCents,
+      shareCents: l.shares[record.personId] ?? 0,
+    })),
     fullMonthTotalCents: reference.totalCents,
     fullShareCents: reference.totals[record.personId] ?? 0,
     daysOccupied,
@@ -229,4 +256,68 @@ export function maxOffsetMonths(items: ItemTemplate[]): number {
   return items
     .filter((t) => t.enabled)
     .reduce((max, t) => Math.max(max, t.coverage?.offsetMonths ?? 0), 0)
+}
+
+/**
+ * The stretch of months a catch-up has anything to say about:
+ *
+ * - the month before the move-in, so it can be set up ahead of time;
+ * - the months it bills — the part-month and, if included, the next one;
+ * - the months whose statements pay for those, since a bill in arrears for
+ *   the move-in month doesn't land until later;
+ * - and, while it's still open, however long its installments run.
+ */
+export function catchupSpan(
+  record: CatchupRecord,
+  items: ItemTemplate[]
+): { from: Period; to: Period } {
+  const periods = catchupPeriods(record)
+  const first = periods[0] ?? periodOf(record.moveIn)
+  const last = periods[periods.length - 1] ?? first
+
+  let to = last
+  for (const item of items) {
+    if (!item.enabled) continue
+    const { offsetMonths, spanMonths } = normalizeCoverage(item.coverage)
+    // A bill landing in P covers [P - offset - span + 1, P - offset], so the
+    // ones paying for `last` land in the months up to last + offset + span - 1.
+    const landed = shiftPeriod(last, offsetMonths + spanMonths - 1)
+    if (landed > to) to = landed
+  }
+  // An open catch-up is still being paid off, however long that takes.
+  if (!record.closedAt) {
+    const end = periodOf(record.end)
+    if (end > to) to = end
+  }
+  return { from: prevPeriod(first), to }
+}
+
+/**
+ * Whether anyone in the household is still settling in as of `period` —
+ * moving in, about to, or waiting on the bills that cover their first months.
+ * Someone with no move-in date has always been here, so never counts.
+ */
+export function isCatchingUp(
+  data: Pick<AppData, "people" | "items" | "catchups">,
+  period: Period
+): boolean {
+  return data.people.some((person) => {
+    if (person.archived) return false
+    const record =
+      data.catchups[person.id] ??
+      (person.from ? newCatchupRecord(person.id, person.from) : undefined)
+    if (!record) return false
+    const { from, to } = catchupSpan(record, data.items)
+    return period >= from && period <= to
+  })
+}
+
+/** Whether the Catch-up tab is shown, honouring the override from Setup. */
+export function showCatchupTab(
+  data: Pick<AppData, "people" | "items" | "catchups" | "prefs">,
+  period: Period
+): boolean {
+  const pref: CatchupTabPref = data.prefs?.catchupTab ?? "auto"
+  if (pref !== "auto") return pref === "on"
+  return isCatchingUp(data, period)
 }

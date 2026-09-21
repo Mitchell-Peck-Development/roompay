@@ -235,6 +235,15 @@ included) is billed through the catch-up alone: the Month tab shows their share 
 they're never asked for the same month twice. Estimates give way to the real figures as soon as a month has
 amounts in it. Marking it settled hands those months back to the usual flow.
 
+**The Catch-up tab shows up only when it's needed.** On *auto* it's in the tab bar from the month before
+someone moves in until the last bill covering their first months has landed — a utility billed a month in
+arrears means the tab stays through November for a September arrival — and for as long as an open catch-up's
+installments run. Every other month it's out of the way. **Setup → Catch-up tab** forces it off or on instead.
+
+**Every total opens onto one roommate's side of it.** On the Month tab, a share expands to that roommate's part
+of each line, prorated days and all; on the Catch-up tab, their share of a typical full month and the combined
+catch-up do the same. The rows always add up to the figure on the row that opened them.
+
 **A credit isn't a split.** Money coming back only has two sensible destinations, so that's what it asks:
 
 | | |

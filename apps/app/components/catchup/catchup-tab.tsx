@@ -24,6 +24,7 @@ import { Switch } from "@workspace/ui/components/switch"
 import { CheckCheck, History, Minus, Plus } from "lucide-react"
 import * as React from "react"
 import { Amount } from "@/components/common/amount"
+import { Breakdown } from "@/components/common/breakdown"
 import { MoneyInput } from "@/components/common/money-input"
 import { RoommateSwitcher } from "@/components/common/roommate-switcher"
 import { SectionCard } from "@/components/common/section-card"
@@ -191,18 +192,43 @@ export function CatchupTab() {
 
         <Statements result={result} who={who} />
 
-        <dl className="mt-3 overflow-hidden rounded-xl border text-sm">
+        {/* Both totals open onto the same bill item by item, so the estimate
+            and what they actually owe can be read line against line. */}
+        <div className="mt-3 overflow-hidden rounded-xl border text-sm">
           <div className="flex flex-col px-4 pt-1">
             <Row label="Full month total (for reference)" cents={result.fullMonthTotalCents} />
-            <Row label={`${who}'s share of a full month`} cents={result.fullShareCents} />
+            <Breakdown
+              className="py-2"
+              label={`${who}'s share of a full month`}
+              cents={result.fullShareCents}
+              rows={result.fullMonthLines.map((line) => ({
+                id: line.templateId,
+                label: line.label,
+                cents: line.shareCents,
+                note: (
+                  <>
+                    of <Amount cents={line.fullCents} /> for the month
+                  </>
+                ),
+              }))}
+              empty="No line items are switched on in Setup."
+            />
           </div>
-          <div className="flex items-baseline justify-between gap-4 bg-accent px-4 py-3 text-accent-foreground">
-            <dt className="font-medium">Combined to catch up</dt>
-            <dd data-testid="catchup-combined">
-              <Amount cents={result.combinedCents} className="text-xl font-bold text-primary" />
-            </dd>
-          </div>
-        </dl>
+          <Breakdown
+            className="bg-accent px-4 py-3 text-accent-foreground"
+            label="Combined to catch up"
+            labelClassName="font-medium"
+            cents={result.combinedCents}
+            amountClassName="text-xl font-bold text-primary"
+            testId="catchup-combined"
+            rows={result.lines.map((line) => ({
+              id: line.templateId,
+              label: line.label,
+              cents: line.shareCents,
+            }))}
+            empty="Nothing to catch up on yet."
+          />
+        </div>
 
         {offsetMonths > 0 && (
           <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -374,11 +400,9 @@ function Statements({ result, who }: { result: CatchupResult; who: string }) {
 
 function Row({ label, cents }: { label: string; cents: number }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-dashed py-2 last:border-0">
-      <dt className="min-w-0">{label}</dt>
-      <dd>
-        <Amount cents={cents} />
-      </dd>
+    <div className="flex justify-between gap-4 border-b border-dashed py-2">
+      <span className="min-w-0">{label}</span>
+      <Amount cents={cents} />
     </div>
   )
 }

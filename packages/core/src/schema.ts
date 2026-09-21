@@ -165,6 +165,14 @@ export const catchupRecordSchema = z.object({
   closedAt: timestamp.optional(),
 })
 
+/** Forced off, shown only while a catch-up is live, or always shown. */
+export const catchupTabPrefSchema = z.enum(["off", "auto", "on"])
+
+/** How the app is shown. Absent in documents written before it existed. */
+export const prefsSchema = z.object({
+  catchupTab: catchupTabPrefSchema.default("auto"),
+})
+
 export const linkSecretsSchema = z.object({
   token: z.string().regex(TOKEN_RE),
   writeKey: z.string().regex(TOKEN_RE),
@@ -181,6 +189,7 @@ export const appDataSchema = z.object({
   current: monthRecordSchema,
   months: z.array(monthRecordSchema).max(600),
   catchups: z.record(z.string(), catchupRecordSchema),
+  prefs: prefsSchema.default({ catchupTab: "auto" }),
   links: z.record(z.string(), linkSecretsSchema),
   meta: z.object({
     createdAt: timestamp,
@@ -207,5 +216,7 @@ export type PaidEntry = z.infer<typeof paidEntrySchema>
 export type Published = z.infer<typeof publishedSchema>
 export type MonthRecord = z.infer<typeof monthRecordSchema>
 export type CatchupRecord = z.infer<typeof catchupRecordSchema>
+export type CatchupTabPref = z.infer<typeof catchupTabPrefSchema>
+export type Prefs = z.infer<typeof prefsSchema>
 export type LinkSecrets = z.infer<typeof linkSecretsSchema>
 export type AppData = z.infer<typeof appDataSchema>

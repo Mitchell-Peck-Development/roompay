@@ -21,7 +21,8 @@ export function CoveredByCatchup({
   period: Period
   shareCents: number
   currency: string
-  onOpenCatchup(): void
+  /** Absent when the Catch-up tab is hidden, and there's nowhere to go. */
+  onOpenCatchup?: () => void
 }) {
   const who = nickname || "your roommate"
   return (
@@ -35,9 +36,11 @@ export function CoveredByCatchup({
           counted in that plan. Now that this month is entered, the plan bills the real figure instead of the
           estimate.
         </p>
-        <Button variant="outline" className="h-10 self-start" onClick={onOpenCatchup}>
-          <CalendarRange /> Open the catch-up
-        </Button>
+        {onOpenCatchup && (
+          <Button variant="outline" className="h-10 self-start" onClick={onOpenCatchup}>
+            <CalendarRange /> Open the catch-up
+          </Button>
+        )}
       </div>
     </SectionCard>
   )

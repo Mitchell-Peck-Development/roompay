@@ -186,6 +186,32 @@ test("a mid-month arrival gets a catch-up, and that month is never billed twice"
   await expect(page.getByRole("button", { name: /Publish|Send/ }).first()).toBeVisible()
 })
 
+test("a share opens onto that roommate's part of every line", async ({ page }) => {
+  await setUp(page)
+  await enterBill(page)
+
+  // Nobody is settling in, so the Catch-up tab keeps out of the way.
+  const nav = page.getByRole("navigation").first()
+  await expect(nav.getByRole("button", { name: "Catch-up" })).toHaveCount(0)
+
+  const share = page.locator('[data-slot="collapsible"]', {
+    has: page.getByTestId("share-Biscuit"),
+  })
+  const lines = share.locator('[data-slot="collapsible-content"]')
+  await expect(lines).toBeHidden()
+  await page.getByRole("button", { name: /Biscuit's share/ }).click()
+  // Half of each line, adding up to the $955.00 on the row that opened it.
+  await expect(lines).toContainText("$824.00")
+  await expect(lines).toContainText("$80.00")
+
+  // The tab can be pinned on from Setup, and put away again.
+  await nav.getByRole("button", { name: "Setup" }).click()
+  await page.getByRole("radio", { name: "On" }).click()
+  await expect(nav.getByRole("button", { name: "Catch-up" })).toBeVisible()
+  await page.getByRole("radio", { name: "Off" }).click()
+  await expect(nav.getByRole("button", { name: "Catch-up" })).toHaveCount(0)
+})
+
 /** The browser behind a page, so a test can open a second device. */
 function browserOf(page: Page): Browser {
   return page.context().browser()!

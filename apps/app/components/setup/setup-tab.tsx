@@ -16,6 +16,7 @@ import { useData } from "@/lib/store"
 import { AppearanceSection } from "./appearance-section"
 import { BackupSection } from "./backup-section"
 import { CadencesEditor } from "./cadences-editor"
+import { CatchupSection } from "./catchup-section"
 import { InstallSection } from "./install-section"
 import { ItemsEditor } from "./items-editor"
 import { PeopleEditor } from "./people-editor"
@@ -73,6 +74,7 @@ export function SetupTab() {
         <SplitEditor split={data.split} people={people} onChange={actions.setDefaultSplit} />
       </SectionCard>
 
+      <CatchupSection />
       <BackupSection />
       <InstallSection />
       <AppearanceSection />

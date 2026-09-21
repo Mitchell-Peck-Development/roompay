@@ -15,7 +15,7 @@ import { PlanCards } from "./plan-cards"
 import { ShareCard } from "./share-card"
 import { SplitEditor } from "./split-editor"
 
-export function MonthTab({ onOpenCatchup }: { onOpenCatchup(): void }) {
+export function MonthTab({ onOpenCatchup }: { onOpenCatchup?: () => void }) {
   const data = useData()
   const month = data.current
   const people = month.participants

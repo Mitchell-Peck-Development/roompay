@@ -28,6 +28,26 @@ describe("parseAppData", () => {
     expect(parseAppData(stored(data), now)).toEqual({ data, dropped: [], fresh: false })
   })
 
+  it("reads a document written before display settings existed", () => {
+    const raw = stored(saved())
+    delete raw.prefs
+
+    const result = parseAppData(raw, now)
+    expect(result.data.prefs.catchupTab).toBe("auto")
+    expect(result.dropped).toEqual([])
+  })
+
+  it("falls back to the default when a display setting can't be read", () => {
+    const raw = stored(saved())
+    raw.prefs = { catchupTab: "sometimes" }
+
+    const result = parseAppData(raw, now)
+    expect(result.data.prefs.catchupTab).toBe("auto")
+    expect(result.dropped).toContain("a display setting")
+    // Nothing else is lost over it.
+    expect(result.data.months).toHaveLength(2)
+  })
+
   it("keeps the months it can read when one is damaged", () => {
     const raw = stored(saved())
     raw.months[0].period = "not-a-month"

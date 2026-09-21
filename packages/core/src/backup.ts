@@ -97,6 +97,7 @@ export function mergeData(local: AppData, incoming: AppData): AppData {
     cadences: mergeById(local.cadences, incoming.cadences),
     months: mergeById(local.months, incoming.months, newer),
     catchups: mergeRecord(local.catchups, incoming.catchups, (c) => c.updatedAt),
+    prefs: lead.prefs,
     links: mergeRecord(local.links, incoming.links, (l) => l.createdAt),
     meta: {
       ...local.meta,

@@ -50,6 +50,20 @@ describe("computeCatchup", () => {
     ])
   })
 
+  it("breaks a full month down item by item, and their share of each", () => {
+    // The reference month, before anything is prorated: what each item costs
+    // and what an even split of it comes to.
+    expect(r.fullMonthLines.map((l) => [l.label, l.fullCents, l.shareCents])).toEqual([
+      ["rent", 164800, 82400],
+      ["fees", 2600, 1300],
+      ["utilities", 23600, 11800],
+    ])
+    const summed = r.fullMonthLines.reduce((a, l) => a + l.shareCents, 0)
+    expect(summed).toBe(r.fullShareCents)
+    // And the catch-up rows add up to what they're actually asked for.
+    expect(r.lines.reduce((a, l) => a + l.shareCents, 0)).toBe(r.combinedCents)
+  })
+
   it("adds the next full month and spreads it evenly", () => {
     expect(r.nextMonthShareCents).toBe(95500)
     expect(r.combinedCents).toBe(149617)
