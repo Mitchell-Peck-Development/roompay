@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { CatchupResult } from "./catchup"
+import { type CatchupResult, catchupPlans } from "./catchup"
 import { formatWindow, residentDays, windowDays } from "./coverage"
 import { type ISODate, periodOf } from "./dates"
 import { meterDetail } from "./meter"
@@ -165,9 +165,10 @@ export function buildMonthlyPayload(args: {
 export function buildCatchupPayload(args: {
   result: CatchupResult
   record: CatchupRecord
+  cadences: Cadence[]
   currency: string
 }): SharePayload {
-  const { result, record, currency } = args
+  const { result, record, cadences, currency } = args
   return {
     v: 1,
     kind: "catchup",
@@ -196,7 +197,9 @@ export function buildCatchupPayload(args: {
     ),
     totalCents: result.fullMonthTotalCents,
     shareCents: result.combinedCents,
-    plans: [result.plan],
+    // Picked like a month's: the owner's installments, or one of the household's usual schedules —
+    // reconciled, so real bills replacing the estimates only move what hasn't been paid.
+    plans: reconcilePlans(catchupPlans({ result, record, cadences }), record.published?.plans, paidTotal(record.paid)),
     defaultPlan: result.plan.key,
     catchup: {
       moveIn: record.moveIn,

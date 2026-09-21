@@ -3,9 +3,12 @@ import {
   type ISODate,
   type Period,
   addDays,
+  dateInPeriod,
   daysInMonth,
   diffDays,
+  formatShortDate,
   nextPeriod,
+  ordinal,
   periodOf,
   prevPeriod,
   shiftPeriod,
@@ -14,6 +17,7 @@ import type { Cents } from "./money"
 import { type Plan, scheduleEvenly } from "./plans"
 import type {
   AppData,
+  Cadence,
   MonthRecord,
   CatchupRecord,
   CatchupTabPref,
@@ -245,6 +249,59 @@ export function computeCatchup(input: {
       payments: scheduleEvenly(combinedCents, dates),
     },
   }
+}
+
+/** Every date from `start` to `end` inclusive that falls on one of `days`, clamped like monthly dates. */
+function datesOnDays(days: number[], start: ISODate, end: ISODate): ISODate[] {
+  const dates = new Set<ISODate>()
+  for (let period = periodOf(start); period <= periodOf(end); period = nextPeriod(period)) {
+    for (const day of days) {
+      const date = dateInPeriod(period, day)
+      if (date >= start && date <= end) dates.add(date)
+    }
+  }
+  return [...dates].sort()
+}
+
+function describeDays(days: number[]): string {
+  const list = [...new Set(days)].sort((a, b) => a - b).map(ordinal)
+  const joined = list.length === 1 ? list[0]! : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`
+  return `On the ${joined}, like every month.`
+}
+
+/**
+ * The schedules a roommate can pick from for their catch-up: the owner's installments first — the
+ * default — then each of the household's usual schedules, on whichever of its days fall between the
+ * first payment and the caught-up-by date. They keep the monthly plans' keys and names, so a pick
+ * here carries on into the months after. A schedule with no day in that window isn't offered, and
+ * one landing on exactly the same dates as an earlier one is left out.
+ */
+export function catchupPlans(args: {
+  result: CatchupResult
+  record: CatchupRecord
+  cadences: Cadence[]
+}): Plan[] {
+  const { result, record, cadences } = args
+  const owner: Plan = {
+    ...result.plan,
+    description: `Evenly spaced from ${formatShortDate(record.start)} to ${formatShortDate(record.end)}.`,
+  }
+  const plans = [owner]
+  const seen = new Set([owner.payments.map((p) => p.date).join()])
+  for (const cadence of cadences) {
+    const dates = datesOnDays(cadence.days, record.start, record.end)
+    const id = dates.join()
+    if (dates.length === 0 || seen.has(id)) continue
+    seen.add(id)
+    plans.push({
+      key: cadence.key,
+      name: cadence.name,
+      description: describeDays(cadence.days),
+      payments: scheduleEvenly(result.combinedCents, dates),
+    })
+  }
+  // As many as a share link holds.
+  return plans.slice(0, 12)
 }
 
 /**
