@@ -25,6 +25,7 @@ import { InstallSection } from "./install-section"
 import { ItemsEditor } from "./items-editor"
 import { PeopleEditor } from "./people-editor"
 import { PrivacySection } from "./privacy-section"
+import { SupportSection } from "./support-section"
 import { SetupProgress } from "./setup-progress"
 
 const CURRENCIES = ["USD", "CAD", "EUR", "GBP", "AUD", "NZD", "MXN", "INR", "JPY", "CHF", "SEK", "BRL"]
@@ -131,6 +132,7 @@ export function SetupTab({ onOpenTab }: { onOpenTab(tab: TabId): void }) {
       <InstallSection />
       <AppearanceSection />
       <PrivacySection />
+      <SupportSection />
     </>
   )
 }

@@ -98,7 +98,7 @@ function repairMonth(value: unknown, dropped: string[]): MonthRecord | undefined
   return parser<MonthRecord>(monthRecordSchema)({ ...record, lines })
 }
 
-const META_KEYS = ["createdAt", "lastBackupAt", "installNudgeDismissedAt"] as const
+const META_KEYS = ["createdAt", "lastBackupAt", "installNudgeDismissedAt", "tipNudgeDismissedAt"] as const
 
 function timestamps(value: unknown): Partial<AppData["meta"]> {
   if (!value || typeof value !== "object") return {}

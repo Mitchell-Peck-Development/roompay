@@ -20,6 +20,7 @@ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome"
 import { StatementPreview } from "@/components/landing/statement-preview"
 import { APP_PATH } from "@/components/landing/site-chrome"
 import { TimingDiagram } from "@/components/landing/timing-diagram"
+import { SupportBand } from "@/components/landing/support-band"
 
 const TITLE = "Split rent and bills with roommates"
 const DESCRIPTION =
@@ -324,6 +325,8 @@ export default function Page() {
             ))}
           </div>
         </Band>
+
+        <SupportBand />
 
         {/* Close */}
         <Band className="bg-accent text-accent-foreground">

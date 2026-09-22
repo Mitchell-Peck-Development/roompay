@@ -238,6 +238,23 @@ describe("rp.view / rp.pick", () => {
     if (!v.ok) throw new Error("expected ok")
     expect(v.statements[0]).toMatchObject({ chosen_plan: "weekly", revision: 3 })
   })
+
+  it("carries a catch-up pick into later months only when months can have that plan", async () => {
+    await pub({ p_kind: "catchup", p_payload: payload(["catchup", "weekly"]) })
+    const pick = (plan: string) =>
+      rp.call("pick", { p_token_hash: h(1), p_period: THIS, p_kind: "catchup", p_plan: plan })
+    const preferred = async () => {
+      const v = await rp.call<ViewResult>("view", { p_token_hash: h(1) })
+      if (!v.ok) throw new Error("expected ok")
+      return v.link.preferred_plan
+    }
+
+    expect(await pick("weekly")).toMatchObject({ ok: true, chosen_plan: "weekly" })
+    expect(await preferred()).toBe("weekly")
+    // The owner's own installments exist on no month, so picking them leaves the preference alone.
+    expect(await pick("catchup")).toMatchObject({ ok: true, chosen_plan: "catchup" })
+    expect(await preferred()).toBe("weekly")
+  })
 })
 
 describe("rp.set_received", () => {

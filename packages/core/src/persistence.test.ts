@@ -46,7 +46,11 @@ function richData(): AppData {
   M.saveCurrent(data, now)
   const monthId = data.current.id
   M.addPaid(data, { kind: "monthly", monthId }, biscuit, { amountCents: 25000, date: "2026-09-18" })
-  M.setPublished(data, { kind: "monthly", monthId }, biscuit, { at: now.toISOString(), hash: "abc123" })
+  M.setPublished(data, { kind: "monthly", monthId }, biscuit, {
+    at: now.toISOString(),
+    hash: "abc123",
+    plans: [{ key: "half", payments: [{ date: "2026-09-01", amountCents: 25000 }, { date: "2026-09-15", amountCents: 26000 }] }],
+  })
   M.ensureLink(data, biscuit, now)
 
   M.ensureCatchup(data, biscuit, "2026-09-14")
@@ -57,6 +61,7 @@ function richData(): AppData {
   M.startNewMonth(data, "2026-10", now)
   data.meta.lastBackupAt = now.toISOString()
   data.meta.installNudgeDismissedAt = now.toISOString()
+  data.meta.tipNudgeDismissedAt = now.toISOString()
   return data
 }
 
@@ -99,7 +104,10 @@ describe("what the browser keeps", () => {
     const person = saved.people[0]!.id
     const september = saved.months.find((m) => m.period === "2026-09")!
     expect(september.paid[person]).toMatchObject([{ amountCents: 25000, date: "2026-09-18" }])
-    expect(september.published[person]).toMatchObject({ hash: "abc123" })
+    expect(september.published[person]).toMatchObject({
+      hash: "abc123",
+      plans: [{ key: "half", payments: [{ date: "2026-09-01", amountCents: 25000 }, { date: "2026-09-15", amountCents: 26000 }] }],
+    })
     expect(saved.links[person]).toMatchObject({ token: expect.any(String), writeKey: expect.any(String) })
     expect(saved.catchups[person]).toMatchObject({
       installments: 6,

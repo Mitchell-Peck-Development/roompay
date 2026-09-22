@@ -139,7 +139,19 @@ export const paidEntrySchema = z.object({
   date: isoDateSchema,
 })
 
-export const publishedSchema = z.object({ at: timestamp, hash: z.string().max(64) })
+/** One plan's schedule as it was last published — what the roommate was paying against. */
+export const publishedPlanSchema = z.object({
+  key: z.string().min(1).max(64),
+  payments: z.array(z.object({ date: isoDateSchema, amountCents: cents })).min(1).max(24),
+})
+
+export const publishedSchema = z.object({
+  at: timestamp,
+  hash: z.string().max(64),
+  // A copy of what was published, kept so a corrected bill can leave paid payments alone. It's a
+  // cache — the server has the original — so a damaged one is dropped, never its whole month.
+  plans: z.array(publishedPlanSchema).max(12).optional().catch(undefined),
+})
 
 export const monthRecordSchema = z.object({
   id,
@@ -204,6 +216,7 @@ export const appDataSchema = z.object({
     updatedAt: timestamp,
     lastBackupAt: timestamp.optional(),
     installNudgeDismissedAt: timestamp.optional(),
+    tipNudgeDismissedAt: timestamp.optional(),
   }),
 })
 
@@ -222,6 +235,7 @@ export type MonthLine = z.infer<typeof monthLineSchema>
 export type LineMeter = NonNullable<MonthLine["meter"]>
 export type PaidEntry = z.infer<typeof paidEntrySchema>
 export type Published = z.infer<typeof publishedSchema>
+export type PublishedPlan = z.infer<typeof publishedPlanSchema>
 export type MonthRecord = z.infer<typeof monthRecordSchema>
 export type CatchupRecord = z.infer<typeof catchupRecordSchema>
 export type CatchupTabPref = z.infer<typeof catchupTabPrefSchema>

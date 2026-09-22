@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { computeCatchup } from "./catchup"
 import { defaultCadences } from "./defaults"
-import type { MonthRecord } from "./schema"
+import type { CatchupRecord, ItemTemplate, MonthRecord } from "./schema"
 import {
   buildCatchupPayload,
   buildMonthlyPayload,
   lastDueOn,
   payloadHash,
   pickPlan,
+  publishedPlans,
   sharePayloadSchema,
 } from "./share"
 
@@ -79,27 +80,59 @@ describe("buildMonthlyPayload", () => {
     expect(sharePayloadSchema.safeParse({ ...p, defaultPlan: "missing" }).success).toBe(false)
     expect(sharePayloadSchema.safeParse({ ...p, shareCents: 1.5 }).success).toBe(false)
   })
+
+  // What the owner last published, and a first payment received against it.
+  const publishedAfterPaying = (paidCents: number): Pick<MonthRecord, "published" | "paid"> => ({
+    published: { a: { at: "2026-10-02T00:00:00.000Z", hash: payloadHash(p), plans: publishedPlans(p) } },
+    paid: { a: [{ id: "p1", amountCents: paidCents, date: "2026-10-01" }] },
+  })
+  const firstOfHalf = p.plans.find((x) => x.key === "half")!.payments[0]!.amountCents
+
+  it("keeps what they've paid when a bill is corrected after publishing", () => {
+    const corrected: MonthRecord = {
+      ...month,
+      ...publishedAfterPaying(firstOfHalf),
+      lines: month.lines.map((l) => (l.id === "1" ? { ...l, amountCents: 160000 } : l)),
+    }
+    const after = buildMonthlyPayload({ month: corrected, personId: "a", cadences: defaultCadences(), currency: "USD" })
+    const half = after.plans.find((x) => x.key === "half")!
+
+    expect(after.shareCents).toBeGreaterThan(p.shareCents)
+    expect(half.payments[0]!.amountCents).toBe(firstOfHalf)
+    expect(half.payments.reduce((sum, x) => sum + x.amountCents, 0)).toBe(after.shareCents)
+  })
+
+  it("publishes exactly the same statement when only a payment has come in", () => {
+    const paying: MonthRecord = { ...month, ...publishedAfterPaying(firstOfHalf) }
+    const again = buildMonthlyPayload({ month: paying, personId: "a", cadences: defaultCadences(), currency: "USD" })
+    expect(payloadHash(again)).toBe(payloadHash(p))
+  })
 })
 
 describe("buildCatchupPayload", () => {
-  it("snapshots the catch-up as a single plan", () => {
-    const record = {
-      personId: "a",
-      moveIn: "2026-09-14",
-      estimates: {},
-      includeNextMonth: true,
-      installments: 4,
-      start: "2026-09-14",
-      end: "2026-10-01",
-      paid: [],
-    }
-    const result = computeCatchup({
-      record,
-      items: [{ id: "rent", label: "Rent", kind: "fixed", enabled: true, defaultAmountCents: 191000, split: { mode: "default" } }],
-      split: { mode: "even" },
-      people: [{ id: "a", nickname: "A" }],
-    })
-    const p = buildCatchupPayload({ result, record, currency: "USD" })
+  const record: CatchupRecord = {
+    personId: "a",
+    moveIn: "2026-09-14",
+    estimates: {},
+    includeNextMonth: true,
+    installments: 4,
+    start: "2026-09-14",
+    end: "2026-10-01",
+    paid: [],
+  }
+  const rent: ItemTemplate = {
+    id: "rent",
+    label: "Rent",
+    kind: "fixed",
+    enabled: true,
+    defaultAmountCents: 191000,
+    split: { mode: "default" },
+  }
+  const people = [{ id: "a", nickname: "A" }]
+  const result = computeCatchup({ record, items: [rent], split: { mode: "even" }, people })
+
+  it("snapshots the catch-up, with the household's schedules beside the owner's", () => {
+    const p = buildCatchupPayload({ result, record, cadences: defaultCadences(), currency: "USD" })
     expect(p).toMatchObject({
       kind: "catchup",
       period: "2026-09",
@@ -119,7 +152,29 @@ describe("buildCatchupPayload", () => {
       },
       { label: "Rent", totalCents: 191000, shareCents: 95500, covers: "October 2026" },
     ])
-    expect(p.plans).toHaveLength(1)
+    // The owner's installments first and by default, then the household's usual schedules.
+    expect(p.plans.map((plan) => plan.key)).toEqual(["catchup", "full", "half", "weekly"])
     expect(sharePayloadSchema.safeParse(p).success).toBe(true)
+  })
+
+  it("keeps what they've paid when the real bills replace the estimates", () => {
+    const before = buildCatchupPayload({ result, record, cadences: defaultCadences(), currency: "USD" })
+    const first = before.plans[0]!.payments[0]!.amountCents
+    const paying: CatchupRecord = {
+      ...record,
+      paid: [{ id: "p1", amountCents: first, date: "2026-09-14" }],
+      published: { at: "2026-09-14T00:00:00.000Z", hash: payloadHash(before), plans: publishedPlans(before) },
+    }
+    const higher = computeCatchup({
+      record: paying,
+      items: [{ ...rent, defaultAmountCents: 200000 }],
+      split: { mode: "even" },
+      people,
+    })
+
+    const after = buildCatchupPayload({ result: higher, record: paying, cadences: defaultCadences(), currency: "USD" })
+    expect(after.shareCents).toBeGreaterThan(before.shareCents)
+    expect(after.plans[0]!.payments[0]!.amountCents).toBe(first)
+    expect(after.plans[0]!.payments.reduce((sum, p) => sum + p.amountCents, 0)).toBe(after.shareCents)
   })
 })

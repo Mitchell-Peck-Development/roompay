@@ -8,6 +8,7 @@ import {
   paidTotal,
   payloadHash,
   pickPlan,
+  publishedPlans,
 } from "@workspace/core"
 import {
   AlertDialog,
@@ -37,8 +38,10 @@ import { actions } from "@/lib/actions"
 import { copyText, shareOrCopy } from "@/lib/download"
 import { shareClient, shareErrorMessage } from "@/lib/share-client"
 import { useData } from "@/lib/store"
+import { SUPPORT_URL, shouldShowTipNudge } from "@/lib/support"
 import { useLinkStatus } from "@/lib/use-link-status"
 import { PaidTracker } from "./paid-tracker"
+import { TipNudge } from "./tip-nudge"
 
 type Props = {
   personId: string
@@ -69,6 +72,7 @@ export function ShareCard({
   const { status, refresh } = useLinkStatus(link?.token)
   const [busy, setBusy] = React.useState(false)
   const [confirmRevoke, setConfirmRevoke] = React.useState(false)
+  const [justPublished, setJustPublished] = React.useState(false)
 
   const hash = payload ? payloadHash(payload) : null
   const linkGone = Boolean(link && status && !status.ok)
@@ -79,6 +83,14 @@ export function ShareCard({
   // statement is no longer there (expired, or removed from another device).
   const isPublished = Boolean(link && published && !(status?.ok && !remote) && !linkGone)
   const changed = isPublished && hash !== null && hash !== published?.hash
+
+  // Links published before this device kept a copy of the schedules: take the server's copy, once,
+  // so a bill corrected after they've started paying still leaves their paid payments alone.
+  const remotePlans = remote?.plans
+  React.useEffect(() => {
+    if (!published || published.plans || !remotePlans) return
+    actions.setPublished(statement, personId, { ...published, plans: remotePlans })
+  }, [published, remotePlans, statement, personId])
 
   // What's been received lives on this device; the server keeps a copy of the
   // total so the roommate's calendar can say "Paid". Whenever the two differ —
@@ -100,6 +112,13 @@ export function ShareCard({
         syncing.current = null
       })
   }, [link, isPublished, remoteReceived, receivedCents, period, statement.kind, refresh])
+
+  const showTip = shouldShowTipNudge({
+    savedMonths: data.months.length,
+    dismissedAt: data.meta.tipNudgeDismissedAt,
+    justPublished,
+    supportUrl: SUPPORT_URL,
+  })
 
   const url = link
     ? `${typeof window === "undefined" ? "" : window.location.origin}/r/${link.token}/${period}${
@@ -124,7 +143,13 @@ export function ShareCard({
       toast.error(shareErrorMessage(result.error, result.missing))
       return
     }
-    actions.setPublished(statement, personId, { at: new Date().toISOString(), hash: payloadHash(payload) })
+    actions.setPublished(statement, personId, {
+      at: new Date().toISOString(),
+      hash: payloadHash(payload),
+      // Kept so a bill corrected after they've started paying leaves their paid payments alone.
+      plans: publishedPlans(payload),
+    })
+    setJustPublished(true)
     void refresh()
     if (options.share) await share(secrets.token)
     else toast.success(`Link updated — ${who} will see the new numbers.`)
@@ -289,6 +314,8 @@ export function ShareCard({
             </p>
           </div>
         )}
+
+        {showTip && <TipNudge who={who} />}
 
         {payload && plan && (
           <>

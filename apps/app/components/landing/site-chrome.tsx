@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Button } from "@workspace/ui/components/button"
+import { SUPPORT_URL } from "@/lib/support"
 import { Mark, Wordmark } from "./mark"
 
 /** Where the app lives. The landing page is "/" on the same origin. */
@@ -63,6 +64,17 @@ export function SiteFooter() {
           <a href="#privacy" className="text-muted-foreground hover:text-foreground">
             What&apos;s stored, and where
           </a>
+          {SUPPORT_URL && (
+            <a
+              href={SUPPORT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="support-link"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Tip jar
+            </a>
+          )}
         </nav>
       </div>
     </footer>

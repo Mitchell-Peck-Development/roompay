@@ -28,7 +28,7 @@ export function CoveredByCatchup({
   return (
     <SectionCard
       title={`${who}'s catch-up covers this month`}
-      description={`${formatPeriod(period)} is part of their settling-in plan, so it isn't billed separately — they see one plan with one set of dates.`}
+      description={`${formatPeriod(period)} is part of their settling-in plan, so it isn't billed separately — they pay it once, through the catch-up, on the schedule they pick.`}
     >
       <div className="flex flex-col gap-3">
         <p className="text-sm">

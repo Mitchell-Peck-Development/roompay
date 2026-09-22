@@ -59,11 +59,14 @@ The migrations create everything from scratch, and each is safe to run more than
 
 1. `supabase/migrations/20260918000000_rp_schema.sql` — the schema, tables and functions.
 2. `supabase/migrations/20260919000000_rp_received.sql` — the received total behind "Paid" / "Overdue".
+3. `supabase/migrations/20260921000000_rp_pick_preference.sql` — picking a catch-up's own installment plan
+   doesn't overwrite the roommate's preferred plan for later months. The app runs fine before this is
+   applied; until then, that pick just leaves their next month opening on your default plan.
 
    Paste each into the SQL editor, or `psql "$APPS_PORTAL_DB_URL" -f <file>`. (Don't `supabase db push` from
    this repo: Apps Portal's migration history lives in its own repo.)
-3. **Dashboard → Project Settings → API → Exposed schemas → add `rp`.** Without this, every call fails.
-4. Give `apps/app` the project URL and its **publishable** key (see `apps/app/.env.example`).
+4. **Dashboard → Project Settings → API → Exposed schemas → add `rp`.** Without this, every call fails.
+5. Give `apps/app` the project URL and its **publishable** key (see `apps/app/.env.example`).
 
 ### How it's protected
 
@@ -236,6 +239,28 @@ otherwise). A statement stays in the feed while anything on it is overdue, else 
 update events in place. Revoking a link empties the feed rather than erroring. If the database is unreachable
 the feed answers `503`, so calendars keep what they have.
 
+### When a bill is corrected after they've started paying
+
+Estimates get replaced by the real statement, and a number gets fixed after the link has gone out. Neither
+rewrites a payment that's already been made: **paid payments stay paid, and the difference lands on the
+payments still to come.** $1,000 over the 1st and 15th with the first $500 received, corrected to $1,100,
+becomes $500 (paid) and $600 — not $550 and $550 with the first one suddenly $50 short and overdue.
+
+The rule, per plan: pour what's been received into the rows as they were **last published**, oldest first.
+Every row it fully covers keeps its published amount; what's still owed is spread evenly over the rest.
+
+- **Everything already paid?** The last payment absorbs the change, since there's nothing later to put it on.
+- **A payment only part-paid** ($200 of $500) isn't locked in — it's re-cut with the rest, and still shows the
+  $200 in.
+- **A bill dropping below what's been paid** lets the paid rows give way, and the tracker shows the overpayment.
+- **Changing the schedule itself** (cadences, a catch-up's dates or installments) re-spreads everything, as before.
+- **Nothing changed?** The schedule comes out identical to the cent, so marking a payment received never makes a
+  link read "the numbers changed since you published".
+
+Each publish keeps a copy of its schedules on the owner's device (`published.plans`, in the backup file too).
+For a link published before that copy existed, the owner's status poll brings the server's copy down once, so
+the next **Update link** still gets it right.
+
 ### Add to calendar
 
 Subscribing comes first on every device — it's what gets the daily statuses. A one-off import is offered second
@@ -269,6 +294,13 @@ These can't be covered by automated tests. Try them against a deployed build (su
 included) is billed through the catch-up alone: the Month tab shows their share but hands the billing over, so
 they're never asked for the same month twice. Estimates give way to the real figures as soon as a month has
 amounts in it. Marking it settled hands those months back to the usual flow.
+
+**A catch-up is picked like a month.** The roommate chooses between your installments — first, and the
+default — and the household's usual schedules, each on whichever of its days fall between *First payment* and
+*Caught up by*. A schedule with no day in that window isn't offered, and two that land on the same dates show
+once. They keep the monthly plans' names and keys, so picking "Split in two" here carries on into the months
+after; picking your installments doesn't touch their monthly preference. Real bills replacing the estimates
+leave paid installments alone (see *When a bill is corrected*).
 
 **The Catch-up tab shows up only when it's needed.** On *auto* it's in the tab bar from the month before
 someone moves in until the last bill covering their first months has landed — a utility billed a month in
@@ -320,3 +352,25 @@ private.
 Safari deletes a site's storage after seven days of browser use without a visit, and a monthly tool would hit
 that. Home Screen apps are exempt, so the app is an installable PWA, iPhone users are nudged to install early
 (and to export first, because the installed app starts empty), and the app asks for persistent storage.
+
+## Paying for it
+
+RoomPay is free and there's no paid tier. The money logic all runs on the owner's device, from
+open source, so a gate on it would be theatre — and gating a household by how many roommates it
+has would paywall exactly the case the app is best at. Publishing a link is the only thing that
+costs anything to run, so the ask is a tip jar and nothing else.
+
+One constant switches it on: put your Ko-fi handle in `KOFI_HANDLE` in `apps/app/lib/support.ts`.
+Leave it empty and every tip surface disappears, which is how a fork or a self-hosted copy turns
+the asking off.
+
+| where | when |
+| --- | --- |
+| Landing page | a "Why it's free" band after the FAQ, and a footer link |
+| Setup → **Support RoomPay** | always, sitting under Privacy |
+| The share card | once, just after a statement publishes — and only from the second saved month on |
+
+A first-timer is never asked: the app has to have done a couple of months' work first. Dismissing
+the nudge, or following it, retires it for good — that's `meta.tipNudgeDismissedAt`, which travels
+in the backup file like everything else. Every tip link is `rel="noopener noreferrer"` and opens
+Ko-fi in a new tab, so nothing follows the person out, not even the page they came from.
