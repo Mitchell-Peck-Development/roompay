@@ -124,7 +124,7 @@ export function CatchupTab() {
 
       <SectionCard
         title="Move-in stub period"
-        description="Bills each item against the service it pays for, not the month it lands in — so a utility billed in arrears skips the first statement — then smooths the lot into one plan instead of a small charge now and a big one right after."
+        description="Bills each item against the service it pays for, not the month it lands in — so a utility billed in arrears skips the first statement — then smooths the lot into one catch-up instead of a small charge now and a big one right after."
       >
         <div className="grid gap-3 min-[420px]:grid-cols-2">
           <div className="flex flex-col gap-1.5">
@@ -184,7 +184,7 @@ export function CatchupTab() {
         <div className="mt-4 flex items-center justify-between gap-3">
           <Label htmlFor="include-next" className="flex flex-col items-start gap-0.5">
             <span>Include the next full month</span>
-            <span className="text-xs font-normal text-muted-foreground">One plan for both, instead of two bills back to back.</span>
+            <span className="text-xs font-normal text-muted-foreground">One catch-up for both, instead of two bills back to back.</span>
           </Label>
           <Switch
             id="include-next"
