@@ -331,3 +331,55 @@ test("a credit comes off the bill or off one person, and says which", async ({ p
   await expect(page.getByTestId("total-bill")).toHaveText("$1,860.00")
   await expect(page.getByRole("button", { name: "Off Biscuit's share" })).toBeVisible()
 })
+
+test("a link published before schedules were kept still keeps paid payments when a bill is corrected", async ({
+  page,
+  browser,
+}) => {
+  await setUp(page)
+  await enterBill(page)
+  await page.getByRole("button", { name: "Publish & share" }).click()
+  const url = await page.getByTestId("share-url").inputValue()
+
+  const roommate = await newDevice(browser)
+  await roommate.goto(url)
+  await roommate.getByRole("radio", { name: /Split in two/ }).click()
+  await expect(roommate.getByTestId("pick-feedback")).toContainText("Split in two")
+
+  await page.reload()
+  await expect(page.getByTestId("pick-status")).toHaveText("Biscuit picked Split in two.")
+  await page.getByRole("button", { name: "Mark paid" }).first().click()
+  await expect(page.getByText("$477.50 of $955.00 received")).toBeVisible()
+
+  // Open the app as an older version left it: published and paid, with no copy of the schedules.
+  const stripped = await page.evaluate(() => {
+    const key = "roompay:v1"
+    const saved = JSON.parse(localStorage.getItem(key)!)
+    const { data } = saved.state
+    let count = 0
+    for (const month of [data.current, ...data.months]) {
+      for (const marker of Object.values(month.published) as { plans?: unknown }[]) {
+        if (marker.plans) count += 1
+        delete marker.plans
+      }
+    }
+    localStorage.setItem(key, JSON.stringify(saved))
+    return count
+  })
+  expect(stripped).toBeGreaterThan(0)
+  await page.reload()
+  await expect(page.getByTestId("pick-status")).toHaveText("Biscuit picked Split in two.")
+
+  await page.getByLabel("Water", { exact: true }).fill("40")
+  await page.getByLabel("Water", { exact: true }).blur()
+  await page.getByRole("button", { name: "Update link" }).click()
+  await expect(page.getByText(/up to date/)).toBeVisible()
+
+  // The server's copy stood in for the missing one: the first half stays paid, the extra dollar goes on the second.
+  await expect(page.getByText("$477.50 of $956.00 received")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Mark paid" })).toHaveCount(1)
+  await roommate.reload()
+  const half = roommate.getByRole("radio", { name: /Split in two/ })
+  await expect(half).toContainText("Paid")
+  await expect(half).toContainText("$478.50")
+})
