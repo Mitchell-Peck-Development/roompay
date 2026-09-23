@@ -1,5 +1,6 @@
-import { formatMoney, formatPeriod, formatShortDate, lastDueOn } from "@workspace/core"
+import { formatMoney, formatPeriod, formatShortDate, lastDueOn, nextPeriod } from "@workspace/core"
 import Link from "next/link"
+import { Fragment } from "react"
 import { pageUrl } from "@/lib/server/rp/feed"
 import type { LinkView, StatementView as Statement } from "@/lib/server/rp/service"
 import { PlanPicker } from "./plan-picker"
@@ -23,6 +24,13 @@ export function StatementView({
     [statement.chosenPlan, view.link.preferredPlan, payload.defaultPlan].find(
       (key) => key && payload.plans.some((p) => p.key === key)
     ) ?? payload.plans[0]!.key
+  const groups = groupByStatement(payload.lines)
+  const lastPeriod = payload.catchup?.periods?.at(-1)
+  const later = payload.catchup?.later ?? []
+  const laterNote =
+    lastPeriod && later.length > 0
+      ? `${formatPeriod(lastPeriod).split(" ")[0]}'s ${listOf(later)} ${later.length === 1 ? "arrives" : "arrive"} a month behind, so ${later.length === 1 ? "it isn't" : "they aren't"} here — ${later.length === 1 ? "it'll" : "they'll"} be on your ${formatPeriod(nextPeriod(lastPeriod))} statement.`
+      : null
   const others = view.statements.filter((s) => !(s.period === statement.period && s.kind === statement.kind))
 
   return (
@@ -92,30 +100,50 @@ export function StatementView({
                 </tr>
               </thead>
               <tbody>
-                {payload.lines.map((line, i) => (
-                  <tr key={`${line.label}-${i}`} className="border-b border-dashed last:border-0">
-                    <td className="px-5 py-2.5 align-top">
-                      {line.label}
-                      {line.covers && (
-                        <span className="block text-xs text-muted-foreground">
-                          covers {line.covers}
-                        </span>
-                      )}
-                      {line.detail && <span className="tabular block text-xs text-muted-foreground">{line.detail}</span>}
-                      {line.prorated && (
-                        <span className="block text-xs text-muted-foreground">
-                          {line.prorated.days === 0
-                            ? "none of it yours — before you moved in"
-                            : `your ${line.prorated.days} of ${line.prorated.of} days`}
-                        </span>
-                      )}
-                    </td>
-                    <td className="tabular py-2.5 text-right align-top text-muted-foreground">{money(line.totalCents)}</td>
-                    <td className="tabular px-5 py-2.5 text-right align-top font-medium">{money(line.shareCents)}</td>
-                  </tr>
+                {groups.map((group) => (
+                  <Fragment key={group.billedIn ?? "all"}>
+                    {group.billedIn && groups.length > 1 && (
+                      <tr className="border-b bg-muted/40">
+                        <th colSpan={2} scope="rowgroup" className="px-5 py-1.5 text-left text-xs font-medium">
+                          Billed in {formatPeriod(group.billedIn).split(" ")[0]}
+                        </th>
+                        <td className="tabular px-5 py-1.5 text-right text-xs font-medium">
+                          {money(group.lines.reduce((sum, l) => sum + l.shareCents, 0))}
+                        </td>
+                      </tr>
+                    )}
+                    {group.lines.map((line, i) => (
+                      <tr key={`${line.label}-${i}`} className="border-b border-dashed last:border-0">
+                        <td className="px-5 py-2.5 align-top">
+                          {line.label}
+                          {line.covers && (
+                            <span className="block text-xs text-muted-foreground">
+                              covers {line.covers}
+                            </span>
+                          )}
+                          {line.detail && <span className="tabular block text-xs text-muted-foreground">{line.detail}</span>}
+                          {line.prorated && (
+                            <span className="block text-xs text-muted-foreground">
+                              {line.prorated.days === 0
+                                ? "none of it yours — before you moved in"
+                                : `your ${line.prorated.days} of ${line.prorated.of} days`}
+                            </span>
+                          )}
+                        </td>
+                        <td className="tabular py-2.5 text-right align-top text-muted-foreground">{money(line.totalCents)}</td>
+                        <td className="tabular px-5 py-2.5 text-right align-top font-medium">{money(line.shareCents)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
+          )}
+
+          {laterNote && (
+            <p className="border-t px-5 py-3 text-xs text-muted-foreground" data-testid="catchup-later">
+              {laterNote}
+            </p>
           )}
         </section>
 
@@ -172,4 +200,21 @@ export function StatementView({
       </div>
     </div>
   )
+}
+
+type Line = Statement["payload"]["lines"][number]
+
+/** A catch-up's lines, split by the statement each lands on; anything else stays one group. */
+function groupByStatement(lines: Line[]): { billedIn?: string; lines: Line[] }[] {
+  const groups: { billedIn?: string; lines: Line[] }[] = []
+  for (const line of lines) {
+    const group = groups.at(-1)
+    if (group && group.billedIn === line.billedIn) group.lines.push(line)
+    else groups.push({ billedIn: line.billedIn, lines: [line] })
+  }
+  return groups
+}
+
+function listOf(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`
 }

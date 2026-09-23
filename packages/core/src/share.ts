@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { type CatchupResult, catchupPlans } from "./catchup"
 import { formatWindow, residentDays, windowDays } from "./coverage"
-import { type ISODate, periodOf } from "./dates"
+import { type ISODate, firstOfPeriod, periodOf } from "./dates"
 import { meterDetail } from "./meter"
 import { paidTotal } from "./paid"
 import { type Plan, buildPlans } from "./plans"
@@ -60,6 +60,8 @@ export const sharePayloadSchema = z
           prorated: z
             .object({ days: z.number().int().min(0).max(800), of: z.number().int().min(1).max(800) })
             .optional(),
+          /** A catch-up's lines: the month whose statement the bill lands on. */
+          billedIn: periodSchema.optional(),
         })
       )
       .max(60),
@@ -78,6 +80,11 @@ export const sharePayloadSchema = z
         periods: z.array(periodSchema).max(6).optional(),
         /** True while any of it is still an estimate. */
         estimated: z.boolean().optional(),
+        /**
+         * Bills that arrive after the month they pay for, so the service for the catch-up's last
+         * month isn't in it — it lands on the first regular statement after.
+         */
+        later: z.array(text).max(20).optional(),
       })
       .optional(),
   })
@@ -169,6 +176,11 @@ export function buildCatchupPayload(args: {
   currency: string
 }): SharePayload {
   const { result, record, cadences, currency } = args
+  // Anything on the last statement paying for an earlier month will, for this month, land after it.
+  const last = result.statements.at(-1)
+  const later = last
+    ? [...new Set(last.lines.filter((l) => l.covers.end < firstOfPeriod(last.period)).map((l) => l.label))]
+    : []
   return {
     v: 1,
     kind: "catchup",
@@ -181,6 +193,7 @@ export function buildCatchupPayload(args: {
       statement.lines
         .filter((l) => l.shareCents !== 0)
         .map((l) => ({
+          billedIn: statement.period,
           label: l.label,
           totalCents: l.fullCents,
           shareCents: l.shareCents,
@@ -209,6 +222,7 @@ export function buildCatchupPayload(args: {
       nextMonthShareCents: result.nextMonthShareCents,
       periods: result.statements.map((s) => s.period),
       estimated: result.statements.some((s) => s.estimated),
+      ...(later.length > 0 ? { later } : {}),
     },
   }
 }

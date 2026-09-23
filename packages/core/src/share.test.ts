@@ -144,16 +144,39 @@ describe("buildCatchupPayload", () => {
     // One row per statement: the prorated move-in month, then the full one.
     expect(p.lines).toEqual([
       {
+        billedIn: "2026-09",
         label: "Rent",
         totalCents: 191000,
         shareCents: 54117,
         covers: "September 2026",
         prorated: { days: 17, of: 30 },
       },
-      { label: "Rent", totalCents: 191000, shareCents: 95500, covers: "October 2026" },
+      { billedIn: "2026-10", label: "Rent", totalCents: 191000, shareCents: 95500, covers: "October 2026" },
     ])
+    // Rent covers the month it's billed in, so nothing is left for later.
+    expect(p.catchup?.later).toBeUndefined()
     // The owner's installments first and by default, then the household's usual schedules.
     expect(p.plans.map((plan) => plan.key)).toEqual(["catchup", "full", "half", "weekly"])
+    expect(sharePayloadSchema.safeParse(p).success).toBe(true)
+  })
+
+  it("names the bills whose last catch-up month lands on the statement after", () => {
+    const water: ItemTemplate = {
+      id: "water",
+      label: "Water",
+      kind: "fixed",
+      enabled: true,
+      defaultAmountCents: 6000,
+      split: { mode: "default" },
+      coverage: { offsetMonths: 1, spanMonths: 1 },
+    }
+    const withWater = computeCatchup({ record, items: [rent, water], split: { mode: "even" }, people })
+    const p = buildCatchupPayload({ result: withWater, record, cadences: defaultCadences(), currency: "USD" })
+    // October's statement carries September's water; October's own comes in November.
+    expect(p.lines.filter((l) => l.label === "Water")).toMatchObject([
+      { billedIn: "2026-10", covers: "September 2026", prorated: { days: 17, of: 30 } },
+    ])
+    expect(p.catchup?.later).toEqual(["Water"])
     expect(sharePayloadSchema.safeParse(p).success).toBe(true)
   })
 
